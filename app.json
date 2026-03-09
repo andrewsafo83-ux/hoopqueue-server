@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "RunUp",
-    "slug": "runup",
+    "name": "HoopQueue",
+    "slug": "hoopqueue",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "runup",
+    "scheme": "hoopqueue",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "splash": {

@@ -1,4 +1,4 @@
-# RunUp — Basketball Court Live Run App
+# HoopQueue — Basketball Court Live Run App
 
 ## Overview
 A mobile app that shows live basketball runs at parks and gyms. Users can see real-time player counts, join waitlists, and browse courts before heading out.

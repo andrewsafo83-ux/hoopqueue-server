@@ -104,7 +104,7 @@ export default function CourtMap() {
 
       <View style={[styles.topBar, { top: insets.top + 12 }]}>
         <View style={styles.topBarInner}>
-          <Text style={styles.topTitle}>RunUp</Text>
+          <Text style={styles.topTitle}>HoopQueue</Text>
           <LiveDot />
         </View>
         <View style={styles.filterRow}>

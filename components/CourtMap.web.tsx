@@ -64,7 +64,7 @@ export default function CourtMap() {
   return (
     <View style={[styles.container, { paddingTop: insets.top + 67 }]}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>RunUp</Text>
+        <Text style={styles.headerTitle}>HoopQueue</Text>
         <View style={styles.liveRow}>
           <View style={styles.liveDot} />
           <Text style={styles.liveText}>LIVE</Text>
