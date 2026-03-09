@@ -1,0 +1,208 @@
+Basketball Court Live Run App – System Architecture Blueprint
+1. App Vision
+A mobile app that shows live basketball runs at parks and gyms.
+
+Users can see how many players are currently playing, how many are waiting,
+
+and join the next game from home before arriving.
+
+2. Core Features
+• Map showing parks and gyms
+
+• Real‑time player counts
+
+• Join / leave wait list
+
+• See who is playing and who is next
+
+• Push notifications when games open
+
+• Filters for indoor gyms or outdoor parks
+
+• User profiles and skill level
+
+ 
+
+3. Main Components
+Frontend (Mobile App)
+
+- React Native or Flutter
+
+- Map interface
+
+- Court status screen
+
+- Join/leave wait list button
+
+ 
+
+Backend Server
+
+- Handles user requests
+
+- Stores court data
+
+- Updates player counts
+
+ 
+
+Database
+
+- Stores users
+
+- Stores courts
+
+- Stores waitlists
+
+ 
+
+Map Services
+
+- Google Maps API for map display
+
+ 
+
+Realtime Updates
+
+- Firebase Realtime Database or Firestore
+
+ 
+
+4. System Architecture
+User Phone
+
+  |
+
+  v
+
+Mobile App (React Native / Flutter)
+
+  |
+
+  v
+
+API Server (Node.js / Express)
+
+  |
+
+  v
+
+Database (Firebase / Firestore)
+
+  |
+
+  v
+
+Google Maps API (court locations)
+
+ 
+
+5. Database Design
+Users
+
+- user_id
+
+- username
+
+- skill_level
+
+- current_location
+
+ 
+
+Courts
+
+- court_id
+
+- name
+
+- latitude
+
+- longitude
+
+- indoor_or_outdoor
+
+- players_playing
+
+- players_waiting
+
+ 
+
+Waitlist
+
+- wait_id
+
+- court_id
+
+- user_id
+
+- position_in_line
+
+- timestamp
+
+ 
+
+6. Example Data
+Court:
+
+name: Venice Beach Court
+
+players_playing: 10
+
+players_waiting: 4
+
+ 
+
+Waitlist:
+
+1. Mike
+
+2. Chris
+
+3. Jamal
+
+4. Alex
+
+ 
+
+7. Real‑Time Update Flow
+1. Player joins waitlist
+
+2. App sends request to backend
+
+3. Backend updates database
+
+4. Database broadcasts update
+
+5. All users see new wait time instantly
+
+ 
+
+8. Notifications
+Examples:
+
+• 'Game finished at Venice Beach – 3 spots open'
+
+• 'Run starting in 5 minutes at Pan Pacific Park'
+
+ 
+
+9. Scaling the App
+Phase 1 – Local city courts
+
+Phase 2 – Multiple cities
+
+Phase 3 – Nationwide basketball runs network
+
+ 
+
+10. Monetization
+• Premium membership for advanced filters
+
+• Gym partnerships
+
+• Sponsored courts
+
+• Local sports brand advertising
+
+ 
