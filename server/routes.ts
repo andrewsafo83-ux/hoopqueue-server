@@ -59,6 +59,51 @@ function generateId(): string {
 
 export async function registerRoutes(app: Express): Promise<Server> {
 
+  // ── Admin ─────────────────────────────────────────────────────────────────
+
+  const ADMIN_USER_ID = "17731833451956z1lxkg";
+
+  app.get("/api/admin/stats", async (req: Request, res: Response) => {
+    const { userId } = req.query as { userId: string };
+    if (userId !== ADMIN_USER_ID) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+    try {
+      const [
+        totalUsers,
+        skillBreakdown,
+        newToday,
+        newThisWeek,
+        totalFriendships,
+        pendingRequests,
+        totalDMs,
+        recentUsers,
+      ] = await Promise.all([
+        pool.query("SELECT COUNT(*) AS count FROM users"),
+        pool.query("SELECT skill_level, COUNT(*) AS count FROM users GROUP BY skill_level ORDER BY count DESC"),
+        pool.query("SELECT COUNT(*) AS count FROM users WHERE created_at >= NOW() - INTERVAL '1 day'"),
+        pool.query("SELECT COUNT(*) AS count FROM users WHERE created_at >= NOW() - INTERVAL '7 days'"),
+        pool.query("SELECT COUNT(*) AS count FROM friendships WHERE status = 'accepted'"),
+        pool.query("SELECT COUNT(*) AS count FROM friendships WHERE status = 'pending'"),
+        pool.query("SELECT COUNT(*) AS count FROM direct_messages"),
+        pool.query("SELECT username, skill_level, email, created_at FROM users ORDER BY created_at DESC LIMIT 10"),
+      ]);
+      res.json({
+        totalUsers: parseInt(totalUsers.rows[0].count),
+        skillBreakdown: skillBreakdown.rows,
+        newToday: parseInt(newToday.rows[0].count),
+        newThisWeek: parseInt(newThisWeek.rows[0].count),
+        totalFriendships: parseInt(totalFriendships.rows[0].count),
+        pendingRequests: parseInt(pendingRequests.rows[0].count),
+        totalDMs: parseInt(totalDMs.rows[0].count),
+        totalCourts: 164,
+        recentUsers: recentUsers.rows,
+      });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch stats" });
+    }
+  });
+
   // ── Users ──────────────────────────────────────────────────────────────────
 
   app.post("/api/users", async (req: Request, res: Response) => {

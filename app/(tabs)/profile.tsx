@@ -13,10 +13,13 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import { useApp } from "@/context/AppContext";
 import { SKILL_LEVELS, SkillLevel } from "@/data/courts";
 import Colors from "@/constants/colors";
 import { getApiUrl } from "@/lib/query-client";
+
+const ADMIN_USER_ID = "17731833451956z1lxkg";
 
 const SKILL_DESCRIPTIONS: Record<SkillLevel, string> = {
   Beginner: "Just learning the game",
@@ -39,6 +42,7 @@ function openUrl(path: string) {
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { profile, updateProfile, waitlists } = useApp();
   const [username, setUsername] = useState(profile?.username ?? "");
   const [email, setEmail] = useState(profile?.email ?? "");
@@ -269,6 +273,18 @@ export default function ProfileScreen() {
         </Text>
       )}
 
+      {profile?.userId === ADMIN_USER_ID && (
+        <TouchableOpacity
+          style={styles.adminBtn}
+          onPress={() => router.push("/admin")}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="bar-chart-outline" size={18} color={Colors.accent} />
+          <Text style={styles.adminBtnText}>Admin Dashboard</Text>
+          <Ionicons name="chevron-forward" size={16} color={Colors.accent} />
+        </TouchableOpacity>
+      )}
+
       <View style={styles.legalSection}>
         <Text style={styles.legalTitle}>Legal</Text>
         <TouchableOpacity
@@ -438,6 +454,24 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: 16,
     lineHeight: 18,
+  },
+  adminBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 32,
+    backgroundColor: Colors.accentDim,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: Colors.accent + "40",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  adminBtnText: {
+    flex: 1,
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 15,
+    color: Colors.accent,
   },
   legalSection: {
     marginTop: 32,
