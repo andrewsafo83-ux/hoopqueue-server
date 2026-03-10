@@ -1455,6 +1455,23 @@ export const COURTS: Court[] = [
     maxPlayers: 10,
   },
 
+  // ── LA PALMA ─────────────────────────────────────────────────────────────
+  {
+    id: "lapalma-central-park",
+    name: "Central Park La Palma",
+    shortName: "Central Park",
+    address: "7821 Walker St, La Palma, CA",
+    city: "La Palma",
+    latitude: 33.8469,
+    longitude: -118.0472,
+    type: "outdoor",
+    surface: "asphalt",
+    hoops: 4,
+    description: "La Palma's crown jewel — four lighted courts in a beautifully kept park. Draws ballers from Cypress, Buena Park, and Cerritos nightly. One of the best outdoor runs in northwest OC.",
+    basePlayersPlaying: 8,
+    maxPlayers: 10,
+  },
+
   // ── PALM DESERT — PARKS & GYM ────────────────────────────────────────────
   {
     id: "palmdesert-civic",
@@ -1552,6 +1569,7 @@ export const CITIES = [
   "Costa Mesa",
   "Huntington Beach",
   "Cypress",
+  "La Palma",
   // San Diego
   "San Diego",
   "Chula Vista",
