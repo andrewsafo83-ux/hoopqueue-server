@@ -8,6 +8,7 @@ import {
   ScrollView,
   Platform,
   Alert,
+  Linking,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
@@ -15,6 +16,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useApp } from "@/context/AppContext";
 import { SKILL_LEVELS, SkillLevel } from "@/data/courts";
 import Colors from "@/constants/colors";
+import { getApiUrl } from "@/lib/query-client";
 
 const SKILL_DESCRIPTIONS: Record<SkillLevel, string> = {
   Beginner: "Just learning the game",
@@ -29,6 +31,11 @@ const SKILL_COLORS: Record<SkillLevel, string> = {
   Advanced: Colors.accent,
   Pro: "#A855F7",
 };
+
+function openUrl(path: string) {
+  const base = getApiUrl().replace(/\/api$/, "");
+  Linking.openURL(`${base}${path}`);
+}
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
@@ -261,6 +268,35 @@ export default function ProfileScreen() {
           Your email is stored securely and never shared with other players.
         </Text>
       )}
+
+      <View style={styles.legalSection}>
+        <Text style={styles.legalTitle}>Legal</Text>
+        <TouchableOpacity
+          style={styles.legalRow}
+          onPress={() => openUrl("/privacy")}
+          activeOpacity={0.7}
+        >
+          <View style={styles.legalRowLeft}>
+            <Ionicons name="shield-checkmark-outline" size={18} color={Colors.textSecondary} />
+            <Text style={styles.legalRowText}>Privacy Policy</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color={Colors.textTertiary} />
+        </TouchableOpacity>
+        <View style={styles.legalDivider} />
+        <TouchableOpacity
+          style={styles.legalRow}
+          onPress={() => openUrl("/terms")}
+          activeOpacity={0.7}
+        >
+          <View style={styles.legalRowLeft}>
+            <Ionicons name="document-text-outline" size={18} color={Colors.textSecondary} />
+            <Text style={styles.legalRowText}>Terms of Service</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color={Colors.textTertiary} />
+        </TouchableOpacity>
+      </View>
+
+      <Text style={styles.versionText}>HoopQueue · California Courts</Text>
     </ScrollView>
   );
 }
@@ -402,5 +438,53 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: 16,
     lineHeight: 18,
+  },
+  legalSection: {
+    marginTop: 32,
+    backgroundColor: Colors.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    overflow: "hidden",
+  },
+  legalTitle: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 13,
+    color: Colors.textSecondary,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 10,
+  },
+  legalRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  legalRowLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  legalRowText: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 15,
+    color: Colors.text,
+  },
+  legalDivider: {
+    height: 1,
+    backgroundColor: Colors.border,
+    marginHorizontal: 16,
+  },
+  versionText: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 12,
+    color: Colors.textTertiary,
+    textAlign: "center",
+    marginTop: 20,
+    marginBottom: 8,
   },
 });
