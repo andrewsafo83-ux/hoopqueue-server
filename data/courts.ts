@@ -1472,6 +1472,22 @@ export const COURTS: Court[] = [
     maxPlayers: 10,
   },
 
+  {
+    id: "los-alamitos-rossmoor",
+    name: "Rossmoor Park",
+    shortName: "Rossmoor Park",
+    address: "12021 Montecito Rd, Los Alamitos, CA",
+    city: "Los Alamitos",
+    latitude: 33.7906,
+    longitude: -118.0785,
+    type: "outdoor",
+    surface: "asphalt",
+    hoops: 2,
+    description: "Local favorite tucked in the Rossmoor neighborhood. Clean courts, plenty of shade, and a loyal crowd of regulars who run here year-round.",
+    basePlayersPlaying: 5,
+    maxPlayers: 10,
+  },
+
   // ── LA PALMA ─────────────────────────────────────────────────────────────
   {
     id: "lapalma-central-park",
