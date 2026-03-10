@@ -15,13 +15,16 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.runup.app",
+      "bundleIdentifier": "com.hoopqueue.app",
+      "buildNumber": "1",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "RunUp needs your location to show nearby courts."
+        "NSLocationWhenInUseUsageDescription": "HoopQueue uses your location to show nearby basketball courts.",
+        "NSLocationAlwaysUsageDescription": "HoopQueue uses your location to show nearby basketball courts."
       }
     },
     "android": {
-      "package": "com.runup.app",
+      "package": "com.hoopqueue.app",
+      "versionCode": 1,
       "permissions": ["ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"],
       "adaptiveIcon": {
         "backgroundColor": "#0A0A0F",
@@ -45,7 +48,7 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "RunUp needs your location to show nearby courts."
+          "locationWhenInUsePermission": "HoopQueue uses your location to show nearby basketball courts."
         }
       ]
     ],

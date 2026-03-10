@@ -9,9 +9,10 @@ import React, {
 } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { COURTS, Court, SkillLevel, CITIES } from "@/data/courts";
+import { apiRequest } from "@/lib/query-client";
 
 const STORAGE_KEYS = {
-  PROFILE: "rnl_profile",
+  PROFILE: "rnl_profile_v2",
   WAITLISTS: "rnl_waitlists",
   PLAYER_COUNTS: "rnl_player_counts",
 };
@@ -19,6 +20,7 @@ const STORAGE_KEYS = {
 export interface UserProfile {
   userId: string;
   username: string;
+  email: string;
   skillLevel: SkillLevel;
 }
 
@@ -38,7 +40,7 @@ interface AppContextValue {
   waitlists: Record<string, WaitlistEntry[]>;
   playerCounts: Record<string, number>;
   isLoaded: boolean;
-  updateProfile: (username: string, skillLevel: SkillLevel) => Promise<void>;
+  updateProfile: (username: string, email: string, skillLevel: SkillLevel) => Promise<void>;
   joinWaitlist: (courtId: string) => Promise<void>;
   leaveWaitlist: (courtId: string) => Promise<void>;
   isOnWaitlist: (courtId: string) => boolean;
@@ -58,7 +60,7 @@ function generateUserId(): string {
 function seedPlayerCounts(): Record<string, number> {
   const counts: Record<string, number> = {};
   for (const court of COURTS) {
-    const variance = Math.floor(Math.random() * 5) - 2;
+    const variance = Math.floor(Math.random() * 3) - 1;
     counts[court.id] = Math.max(0, Math.min(court.maxPlayers, court.basePlayersPlaying + variance));
   }
   return counts;
@@ -103,16 +105,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     loadData();
   }, []);
 
+  // Only simulate activity for courts that already have players
   useEffect(() => {
     const interval = setInterval(() => {
       setPlayerCounts((prev) => {
         const updated = { ...prev };
-        const keys = Object.keys(updated);
-        const randomKey = keys[Math.floor(Math.random() * keys.length)];
+        // Only pick courts that currently have players
+        const activeCourts = Object.keys(updated).filter((k) => (updated[k] ?? 0) > 0);
+        if (activeCourts.length === 0) return updated;
+        const randomKey = activeCourts[Math.floor(Math.random() * activeCourts.length)];
         const court = COURTS.find((c) => c.id === randomKey);
         if (court) {
           const delta = Math.random() < 0.5 ? 1 : -1;
-          updated[randomKey] = Math.max(0, Math.min(court.maxPlayers, (updated[randomKey] ?? 0) + delta));
+          const newVal = Math.max(0, Math.min(court.maxPlayers, (updated[randomKey] ?? 0) + delta));
+          updated[randomKey] = newVal;
         }
         return updated;
       });
@@ -120,12 +126,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(interval);
   }, []);
 
-  const updateProfile = useCallback(async (username: string, skillLevel: SkillLevel) => {
-    const existing = profile;
-    const userId = existing?.userId ?? generateUserId();
-    const newProfile: UserProfile = { userId, username, skillLevel };
+  const updateProfile = useCallback(async (username: string, email: string, skillLevel: SkillLevel) => {
+    const userId = profile?.userId ?? generateUserId();
+    const newProfile: UserProfile = { userId, username, email, skillLevel };
     setProfile(newProfile);
     await AsyncStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(newProfile));
+    // Persist to backend database
+    try {
+      await apiRequest("POST", "/api/users", { userId, username, email, skillLevel });
+    } catch (err) {
+      console.warn("Could not sync profile to server:", err);
+    }
   }, [profile]);
 
   const joinWaitlist = useCallback(async (courtId: string) => {
