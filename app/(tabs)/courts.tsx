@@ -1,4 +1,4 @@
-import React, { useRef } from "react";
+import React, { useRef, useState } from "react";
 import {
   View,
   Text,
@@ -8,12 +8,13 @@ import {
   Animated,
   Platform,
   Pressable,
+  Modal,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useApp } from "@/context/AppContext";
-import { Court } from "@/data/courts";
+import { Court, CITIES } from "@/data/courts";
 import Colors from "@/constants/colors";
 
 function CourtCard({ court, count }: { court: Court; count: number }) {
@@ -41,11 +42,9 @@ function CourtCard({ court, count }: { court: Court; count: number }) {
       >
         <View style={styles.cardTop}>
           <View style={styles.cardTitleRow}>
-            <View>
-              <Text style={styles.cardName}>{court.shortName}</Text>
-              <Text style={styles.cardAddress} numberOfLines={1}>
-                {court.address}
-              </Text>
+            <View style={{ flex: 1, marginRight: 10 }}>
+              <Text style={styles.cardName} numberOfLines={1}>{court.shortName}</Text>
+              <Text style={styles.cardCity}>{court.city}</Text>
             </View>
             <View style={[styles.statusBadge, { backgroundColor: statusColor + "22" }]}>
               <View style={[styles.badgeDot, { backgroundColor: statusColor }]} />
@@ -58,7 +57,7 @@ function CourtCard({ court, count }: { court: Court; count: number }) {
           <View style={styles.metaItem}>
             <Ionicons
               name={court.type === "indoor" ? "business-outline" : "partly-sunny-outline"}
-              size={14}
+              size={13}
               color={Colors.textSecondary}
             />
             <Text style={styles.metaText}>
@@ -66,11 +65,11 @@ function CourtCard({ court, count }: { court: Court; count: number }) {
             </Text>
           </View>
           <View style={styles.metaItem}>
-            <Ionicons name="layers-outline" size={14} color={Colors.textSecondary} />
+            <Ionicons name="layers-outline" size={13} color={Colors.textSecondary} />
             <Text style={styles.metaText}>{court.surface}</Text>
           </View>
           <View style={styles.metaItem}>
-            <Ionicons name="basketball-outline" size={14} color={Colors.textSecondary} />
+            <Ionicons name="basketball-outline" size={13} color={Colors.textSecondary} />
             <Text style={styles.metaText}>{court.hoops} hoops</Text>
           </View>
         </View>
@@ -99,9 +98,50 @@ function CourtCard({ court, count }: { court: Court; count: number }) {
   );
 }
 
+function CityPicker({
+  visible,
+  selected,
+  onSelect,
+  onClose,
+}: {
+  visible: boolean;
+  selected: string;
+  onSelect: (city: string) => void;
+  onClose: () => void;
+}) {
+  const insets = useSafeAreaInsets();
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={styles.modalOverlay} onPress={onClose}>
+        <View style={[styles.pickerSheet, { paddingBottom: insets.bottom + 16 }]}>
+          <View style={styles.pickerHandle} />
+          <Text style={styles.pickerTitle}>Filter by City</Text>
+          <ScrollView showsVerticalScrollIndicator={false}>
+            {CITIES.map((city) => (
+              <TouchableOpacity
+                key={city}
+                style={[styles.pickerItem, selected === city && styles.pickerItemActive]}
+                onPress={() => { onSelect(city); onClose(); }}
+              >
+                <Text style={[styles.pickerItemText, selected === city && styles.pickerItemTextActive]}>
+                  {city}
+                </Text>
+                {selected === city && (
+                  <Ionicons name="checkmark" size={18} color={Colors.accent} />
+                )}
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      </Pressable>
+    </Modal>
+  );
+}
+
 export default function CourtsScreen() {
   const insets = useSafeAreaInsets();
-  const { courts, playerCounts, courtFilter, setCourtFilter } = useApp();
+  const { courts, playerCounts, courtFilter, setCourtFilter, cityFilter, setCityFilter } = useApp();
+  const [showCityPicker, setShowCityPicker] = useState(false);
 
   const activeCourts = courts.filter((c) => (playerCounts[c.id] ?? 0) > 0).length;
 
@@ -111,7 +151,7 @@ export default function CourtsScreen() {
         <View>
           <Text style={styles.headerTitle}>Courts</Text>
           <Text style={styles.headerSub}>
-            {activeCourts} active right now
+            {activeCourts} active · {courts.length} total
           </Text>
         </View>
       </View>
@@ -128,6 +168,28 @@ export default function CourtsScreen() {
             </Text>
           </TouchableOpacity>
         ))}
+
+        <TouchableOpacity
+          style={[styles.cityBtn, cityFilter !== "All Cities" && styles.cityBtnActive]}
+          onPress={() => setShowCityPicker(true)}
+        >
+          <Ionicons
+            name="location-outline"
+            size={13}
+            color={cityFilter !== "All Cities" ? Colors.background : Colors.textSecondary}
+          />
+          <Text
+            style={[styles.filterText, cityFilter !== "All Cities" && styles.filterTextActive]}
+            numberOfLines={1}
+          >
+            {cityFilter === "All Cities" ? "City" : cityFilter}
+          </Text>
+          <Ionicons
+            name="chevron-down"
+            size={12}
+            color={cityFilter !== "All Cities" ? Colors.background : Colors.textSecondary}
+          />
+        </TouchableOpacity>
       </View>
 
       <ScrollView
@@ -138,7 +200,7 @@ export default function CourtsScreen() {
           <View style={styles.empty}>
             <Ionicons name="basketball-outline" size={48} color={Colors.textTertiary} />
             <Text style={styles.emptyText}>No courts found</Text>
-            <Text style={styles.emptySub}>Try changing your filter</Text>
+            <Text style={styles.emptySub}>Try changing your filters</Text>
           </View>
         ) : (
           courts.map((court) => (
@@ -146,6 +208,13 @@ export default function CourtsScreen() {
           ))
         )}
       </ScrollView>
+
+      <CityPicker
+        visible={showCityPicker}
+        selected={cityFilter}
+        onSelect={setCityFilter}
+        onClose={() => setShowCityPicker(false)}
+      />
     </View>
   );
 }
@@ -159,9 +228,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 20,
     paddingBottom: 8,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-end",
   },
   headerTitle: {
     fontFamily: "Inter_700Bold",
@@ -180,6 +246,7 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingHorizontal: 20,
     paddingVertical: 12,
+    flexWrap: "wrap",
   },
   filterBtn: {
     paddingHorizontal: 16,
@@ -190,6 +257,22 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   filterBtnActive: {
+    backgroundColor: Colors.accent,
+    borderColor: Colors.accent,
+  },
+  cityBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    maxWidth: 140,
+  },
+  cityBtnActive: {
     backgroundColor: Colors.accent,
     borderColor: Colors.accent,
   },
@@ -215,7 +298,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   cardTop: {
-    marginBottom: 12,
+    marginBottom: 10,
   },
   cardTitleRow: {
     flexDirection: "row",
@@ -224,15 +307,14 @@ const styles = StyleSheet.create({
   },
   cardName: {
     fontFamily: "Inter_700Bold",
-    fontSize: 17,
+    fontSize: 16,
     color: Colors.text,
     marginBottom: 2,
   },
-  cardAddress: {
+  cardCity: {
     fontFamily: "Inter_400Regular",
     fontSize: 12,
-    color: Colors.textSecondary,
-    maxWidth: 200,
+    color: Colors.accent,
   },
   statusBadge: {
     flexDirection: "row",
@@ -253,8 +335,9 @@ const styles = StyleSheet.create({
   },
   cardMeta: {
     flexDirection: "row",
-    gap: 14,
-    marginBottom: 14,
+    gap: 12,
+    marginBottom: 12,
+    flexWrap: "wrap",
   },
   metaItem: {
     flexDirection: "row",
@@ -316,5 +399,54 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     fontSize: 14,
     color: Colors.textTertiary,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    justifyContent: "flex-end",
+  },
+  pickerSheet: {
+    backgroundColor: Colors.card,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: 12,
+    paddingHorizontal: 20,
+    maxHeight: "75%",
+    borderTopWidth: 1,
+    borderColor: Colors.border,
+  },
+  pickerHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: Colors.border,
+    borderRadius: 2,
+    alignSelf: "center",
+    marginBottom: 16,
+  },
+  pickerTitle: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 18,
+    color: Colors.text,
+    marginBottom: 12,
+  },
+  pickerItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  pickerItemActive: {
+    backgroundColor: "transparent",
+  },
+  pickerItemText: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 15,
+    color: Colors.text,
+  },
+  pickerItemTextActive: {
+    color: Colors.accent,
+    fontFamily: "Inter_600SemiBold",
   },
 });

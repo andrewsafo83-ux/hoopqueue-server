@@ -1,18 +1,18 @@
-import React, { useRef } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  Animated,
   TouchableOpacity,
   Pressable,
+  Modal,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useApp } from "@/context/AppContext";
-import { Court } from "@/data/courts";
+import { Court, CITIES } from "@/data/courts";
 import Colors from "@/constants/colors";
 
 function CourtCard({ court, count }: { court: Court; count: number }) {
@@ -28,12 +28,8 @@ function CourtCard({ court, count }: { court: Court; count: number }) {
       <View style={styles.cardRow}>
         <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
         <View style={styles.cardInfo}>
-          <Text style={styles.cardName} numberOfLines={1}>
-            {court.shortName}
-          </Text>
-          <Text style={styles.cardAddress} numberOfLines={1}>
-            {court.address}
-          </Text>
+          <Text style={styles.cardName} numberOfLines={1}>{court.shortName}</Text>
+          <Text style={styles.cardCity}>{court.city}</Text>
         </View>
         <View style={styles.cardRight}>
           <Text style={styles.countNum}>{count}</Text>
@@ -56,21 +52,64 @@ function CourtCard({ court, count }: { court: Court; count: number }) {
   );
 }
 
+function CityPicker({
+  visible,
+  selected,
+  onSelect,
+  onClose,
+}: {
+  visible: boolean;
+  selected: string;
+  onSelect: (city: string) => void;
+  onClose: () => void;
+}) {
+  const insets = useSafeAreaInsets();
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={styles.modalOverlay} onPress={onClose}>
+        <View style={[styles.pickerSheet, { paddingBottom: insets.bottom + 34 }]}>
+          <View style={styles.pickerHandle} />
+          <Text style={styles.pickerTitle}>Filter by City</Text>
+          <ScrollView showsVerticalScrollIndicator={false}>
+            {CITIES.map((city) => (
+              <TouchableOpacity
+                key={city}
+                style={styles.pickerItem}
+                onPress={() => { onSelect(city); onClose(); }}
+              >
+                <Text style={[styles.pickerItemText, selected === city && { color: Colors.accent }]}>
+                  {city}
+                </Text>
+                {selected === city && (
+                  <Ionicons name="checkmark" size={18} color={Colors.accent} />
+                )}
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      </Pressable>
+    </Modal>
+  );
+}
+
 export default function CourtMap() {
   const insets = useSafeAreaInsets();
-  const { courts, playerCounts, courtFilter, setCourtFilter } = useApp();
+  const { courts, playerCounts, courtFilter, setCourtFilter, cityFilter, setCityFilter } = useApp();
+  const [showCityPicker, setShowCityPicker] = useState(false);
   const activeCourts = courts.filter((c) => (playerCounts[c.id] ?? 0) > 0).length;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + 67 }]}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>HoopQueue</Text>
+        <View>
+          <Text style={styles.headerTitle}>HoopQueue</Text>
+          <Text style={styles.headerSub}>{activeCourts} active · {courts.length} courts</Text>
+        </View>
         <View style={styles.liveRow}>
           <View style={styles.liveDot} />
           <Text style={styles.liveText}>LIVE</Text>
         </View>
       </View>
-      <Text style={styles.subTitle}>{activeCourts} active courts near you</Text>
 
       <View style={styles.filterRow}>
         {(["all", "outdoor", "indoor"] as const).map((f) => (
@@ -84,16 +123,41 @@ export default function CourtMap() {
             </Text>
           </TouchableOpacity>
         ))}
+        <TouchableOpacity
+          style={[styles.cityBtn, cityFilter !== "All Cities" && styles.filterBtnActive]}
+          onPress={() => setShowCityPicker(true)}
+        >
+          <Ionicons name="location-outline" size={13} color={cityFilter !== "All Cities" ? Colors.background : Colors.textSecondary} />
+          <Text style={[styles.filterText, cityFilter !== "All Cities" && styles.filterTextActive]} numberOfLines={1}>
+            {cityFilter === "All Cities" ? "City" : cityFilter}
+          </Text>
+          <Ionicons name="chevron-down" size={12} color={cityFilter !== "All Cities" ? Colors.background : Colors.textSecondary} />
+        </TouchableOpacity>
       </View>
 
       <ScrollView
-        contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 100 }]}
+        contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 34 }]}
         showsVerticalScrollIndicator={false}
       >
-        {courts.map((court) => (
-          <CourtCard key={court.id} court={court} count={playerCounts[court.id] ?? 0} />
-        ))}
+        {courts.length === 0 ? (
+          <View style={styles.empty}>
+            <Ionicons name="basketball-outline" size={40} color={Colors.textTertiary} />
+            <Text style={styles.emptyText}>No courts found</Text>
+            <Text style={styles.emptySub}>Try adjusting your filters</Text>
+          </View>
+        ) : (
+          courts.map((court) => (
+            <CourtCard key={court.id} court={court} count={playerCounts[court.id] ?? 0} />
+          ))
+        )}
       </ScrollView>
+
+      <CityPicker
+        visible={showCityPicker}
+        selected={cityFilter}
+        onSelect={setCityFilter}
+        onClose={() => setShowCityPicker(false)}
+      />
     </View>
   );
 }
@@ -103,17 +167,23 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
+    alignItems: "flex-start",
     paddingHorizontal: 20,
-    paddingBottom: 4,
+    paddingBottom: 10,
   },
   headerTitle: {
     fontFamily: "Inter_700Bold",
-    fontSize: 28,
+    fontSize: 26,
     color: Colors.accent,
     letterSpacing: -0.5,
   },
-  liveRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  headerSub: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 13,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  liveRow: { flexDirection: "row", alignItems: "center", gap: 6, paddingTop: 4 },
   liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.green },
   liveText: {
     fontFamily: "Inter_700Bold",
@@ -121,14 +191,13 @@ const styles = StyleSheet.create({
     color: Colors.green,
     letterSpacing: 1,
   },
-  subTitle: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 14,
-    color: Colors.textSecondary,
+  filterRow: {
+    flexDirection: "row",
+    gap: 8,
     paddingHorizontal: 20,
-    paddingBottom: 12,
+    marginBottom: 12,
+    flexWrap: "wrap",
   },
-  filterRow: { flexDirection: "row", gap: 8, paddingHorizontal: 20, marginBottom: 12 },
   filterBtn: {
     paddingHorizontal: 16,
     paddingVertical: 7,
@@ -138,6 +207,18 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   filterBtnActive: { backgroundColor: Colors.accent, borderColor: Colors.accent },
+  cityBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    maxWidth: 140,
+  },
   filterText: {
     fontFamily: "Inter_500Medium",
     fontSize: 13,
@@ -157,25 +238,35 @@ const styles = StyleSheet.create({
   cardRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   statusDot: { width: 10, height: 10, borderRadius: 5, flexShrink: 0 },
   cardInfo: { flex: 1 },
-  cardName: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 15,
-    color: Colors.text,
-  },
-  cardAddress: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 12,
-    color: Colors.textSecondary,
-    marginTop: 2,
-  },
+  cardName: { fontFamily: "Inter_600SemiBold", fontSize: 15, color: Colors.text },
+  cardCity: { fontFamily: "Inter_400Regular", fontSize: 12, color: Colors.accent, marginTop: 1 },
   cardRight: { flexDirection: "row", alignItems: "baseline" },
   countNum: { fontFamily: "Inter_700Bold", fontSize: 18, color: Colors.text },
   countMax: { fontFamily: "Inter_400Regular", fontSize: 13, color: Colors.textSecondary },
-  progressBar: {
-    height: 3,
-    backgroundColor: Colors.surface,
-    borderRadius: 2,
-    overflow: "hidden",
-  },
+  progressBar: { height: 3, backgroundColor: Colors.surface, borderRadius: 2, overflow: "hidden" },
   progressFill: { height: "100%", borderRadius: 2 },
+  empty: { alignItems: "center", paddingTop: 60, gap: 10 },
+  emptyText: { fontFamily: "Inter_600SemiBold", fontSize: 16, color: Colors.textSecondary },
+  emptySub: { fontFamily: "Inter_400Regular", fontSize: 13, color: Colors.textTertiary },
+  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" },
+  pickerSheet: {
+    backgroundColor: Colors.card,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: 12,
+    paddingHorizontal: 20,
+    maxHeight: "70%",
+    borderTopWidth: 1,
+    borderColor: Colors.border,
+  },
+  pickerHandle: {
+    width: 40, height: 4, backgroundColor: Colors.border,
+    borderRadius: 2, alignSelf: "center", marginBottom: 16,
+  },
+  pickerTitle: { fontFamily: "Inter_700Bold", fontSize: 18, color: Colors.text, marginBottom: 12 },
+  pickerItem: {
+    flexDirection: "row", justifyContent: "space-between", alignItems: "center",
+    paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: Colors.border,
+  },
+  pickerItemText: { fontFamily: "Inter_500Medium", fontSize: 15, color: Colors.text },
 });

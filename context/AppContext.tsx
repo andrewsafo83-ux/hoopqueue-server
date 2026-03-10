@@ -8,7 +8,7 @@ import React, {
   ReactNode,
 } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { COURTS, Court, SkillLevel } from "@/data/courts";
+import { COURTS, Court, SkillLevel, CITIES } from "@/data/courts";
 
 const STORAGE_KEYS = {
   PROFILE: "rnl_profile",
@@ -45,6 +45,8 @@ interface AppContextValue {
   getMyPosition: (courtId: string) => number | null;
   courtFilter: "all" | "indoor" | "outdoor";
   setCourtFilter: (f: "all" | "indoor" | "outdoor") => void;
+  cityFilter: string;
+  setCityFilter: (city: string) => void;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -68,6 +70,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [playerCounts, setPlayerCounts] = useState<Record<string, number>>(seedPlayerCounts());
   const [isLoaded, setIsLoaded] = useState(false);
   const [courtFilter, setCourtFilter] = useState<"all" | "indoor" | "outdoor">("all");
+  const [cityFilter, setCityFilter] = useState<string>("All Cities");
 
   useEffect(() => {
     async function loadData() {
@@ -170,9 +173,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [profile, waitlists]);
 
   const courts = useMemo(() => {
-    if (courtFilter === "all") return COURTS;
-    return COURTS.filter((c) => c.type === courtFilter);
-  }, [courtFilter]);
+    return COURTS.filter((c) => {
+      const typeMatch = courtFilter === "all" || c.type === courtFilter;
+      const cityMatch = cityFilter === "All Cities" || c.city === cityFilter;
+      return typeMatch && cityMatch;
+    });
+  }, [courtFilter, cityFilter]);
 
   const value = useMemo<AppContextValue>(() => ({
     profile,
@@ -187,7 +193,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     getMyPosition,
     courtFilter,
     setCourtFilter,
-  }), [profile, courts, waitlists, playerCounts, isLoaded, updateProfile, joinWaitlist, leaveWaitlist, isOnWaitlist, getMyPosition, courtFilter, setCourtFilter]);
+    cityFilter,
+    setCityFilter,
+  }), [profile, courts, waitlists, playerCounts, isLoaded, updateProfile, joinWaitlist, leaveWaitlist, isOnWaitlist, getMyPosition, courtFilter, setCourtFilter, cityFilter, setCityFilter]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
