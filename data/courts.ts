@@ -1455,6 +1455,23 @@ export const COURTS: Court[] = [
     maxPlayers: 10,
   },
 
+  // ── LOS ALAMITOS ─────────────────────────────────────────────────────────
+  {
+    id: "24hr-los-alamitos-katella",
+    name: "24 Hour Fitness Los Alamitos (Katella)",
+    shortName: "24hr Katella",
+    address: "3890 Katella Ave, Los Alamitos, CA",
+    city: "Los Alamitos",
+    latitude: 33.8026,
+    longitude: -118.0571,
+    type: "indoor",
+    surface: "hardwood",
+    hoops: 2,
+    description: "The Katella Ave staple right on the Cypress border. Serious regulars from Cypress, La Palma, Seal Beach, and Long Beach all converge here for competitive daily runs.",
+    basePlayersPlaying: 8,
+    maxPlayers: 10,
+  },
+
   // ── LA PALMA ─────────────────────────────────────────────────────────────
   {
     id: "lapalma-central-park",
@@ -1570,6 +1587,7 @@ export const CITIES = [
   "Huntington Beach",
   "Cypress",
   "La Palma",
+  "Los Alamitos",
   // San Diego
   "San Diego",
   "Chula Vista",
