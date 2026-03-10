@@ -11,15 +11,19 @@ A mobile app showing live basketball runs at parks and gyms across California. U
 - **Map**: react-native-maps@1.18.0 (Expo Go compatible, platform-split)
 
 ## Architecture
-- `app/(tabs)/` — Three tabs: Map, Courts, Profile
+- `app/(tabs)/` — Four tabs: Map, Courts, Messages, Profile
 - `app/court/[id].tsx` — Court detail + waitlist + live chat feed
+- `app/dm/[userId].tsx` — DM conversation thread (friends only)
 - `context/AppContext.tsx` — Shared state: courts, waitlists, player counts, profile
-- `data/courts.ts` — 60+ courts across CA including 24 Hour Fitness gyms; CITIES array
-- `server/routes.ts` — REST API: user registration (PostgreSQL), court messages (in-memory)
+- `data/courts.ts` — 70+ courts across CA including 24 Hour Fitness gyms; CITIES array
+- `server/routes.ts` — REST API: users, friends, DMs (PostgreSQL), court messages (in-memory)
 - `constants/colors.ts` — Dark theme with orange accent
 
 ## Database Schema
-- **users** table: `id`, `user_id` (unique), `username`, `email` (unique), `skill_level`, `created_at`, `updated_at`
+- **users**: `id`, `user_id` (unique), `username`, `email` (unique), `skill_level`, `created_at`, `updated_at`
+- **friendships**: `id`, `requester_id`, `addressee_id`, `status` (pending/accepted), `created_at`, `updated_at`
+- **direct_messages**: `id`, `sender_id`, `receiver_id`, `text`, `created_at`
+- **dm_read_receipts**: `user_id`, `partner_id`, `last_read`
 
 ## Features
 - Interactive dark map with court markers (mobile native; list fallback on web)
@@ -27,7 +31,8 @@ A mobile app showing live basketball runs at parks and gyms across California. U
 - City + indoor/outdoor filtering
 - Join/leave waitlists with position tracking
 - Live Feed per court: post updates, quick-tap chips, 3-second polling
-- Profanity filter on all chat messages (server-side)
+- Profanity filter on all chat messages and DMs (server-side)
+- **Friends + DM system**: search players by username, send/accept friend requests, DM accepted friends only; pending requests shown as badge on tab + banner in Messages screen; long-press friend to unfriend
 - User profile with name, **email** (stored in PostgreSQL), and skill level
 - Liquid glass tab bar on iOS 26+
 - Custom AI-generated app icon and splash screen
