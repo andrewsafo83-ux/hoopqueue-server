@@ -69,6 +69,7 @@ interface AppContextValue {
   userLocation: UserLocation | null;
   updateProfile: (username: string, handle: string, email: string, phone: string, skillLevel: SkillLevel, forceUserId?: string) => Promise<void>;
   updateAvatar: (base64: string) => Promise<void>;
+  refetchCourts: () => Promise<void>;
   joinWaitlist: (courtId: string) => Promise<void>;
   leaveWaitlist: (courtId: string) => Promise<void>;
   isOnWaitlist: (courtId: string) => boolean;
@@ -211,6 +212,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [profile]);
 
+  const refetchCourts = useCallback(async () => {
+    const fetched = await fetchCourtsFromApi();
+    if (fetched.length > 0) {
+      setAllCourts(fetched);
+      setPlayerCounts((prev) => {
+        const updated = { ...prev };
+        for (const court of fetched) {
+          if (!(court.id in updated)) {
+            const variance = Math.floor(Math.random() * 3) - 1;
+            updated[court.id] = Math.max(0, Math.min(court.maxPlayers, court.basePlayersPlaying + variance));
+          }
+        }
+        return updated;
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    const interval = setInterval(refetchCourts, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [refetchCourts]);
+
   const updateAvatar = useCallback(async (base64: string) => {
     if (!profile) return;
     const newProfile = { ...profile, avatarBase64: base64 };
@@ -307,6 +330,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     userLocation,
     updateProfile,
     updateAvatar,
+    refetchCourts,
     joinWaitlist,
     leaveWaitlist,
     isOnWaitlist,
@@ -317,7 +341,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     cityFilter,
     setCityFilter,
     availableCities,
-  }), [profile, courts, allCourts, waitlists, playerCounts, isLoaded, userLocation, updateProfile, updateAvatar, joinWaitlist, leaveWaitlist, isOnWaitlist, getMyPosition, getDistanceMiles, courtFilter, setCourtFilter, cityFilter, setCityFilter, availableCities]);
+  }), [profile, courts, allCourts, waitlists, playerCounts, isLoaded, userLocation, updateProfile, updateAvatar, refetchCourts, joinWaitlist, leaveWaitlist, isOnWaitlist, getMyPosition, getDistanceMiles, courtFilter, setCourtFilter, cityFilter, setCityFilter, availableCities]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }

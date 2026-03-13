@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   Platform,
   Pressable,
   Modal,
+  RefreshControl,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -149,7 +150,14 @@ function CityPicker({
 
 export default function CourtsScreen() {
   const insets = useSafeAreaInsets();
-  const { courts, playerCounts, courtFilter, setCourtFilter, cityFilter, setCityFilter, availableCities, getDistanceMiles } = useApp();
+  const { courts, playerCounts, courtFilter, setCourtFilter, cityFilter, setCityFilter, availableCities, getDistanceMiles, refetchCourts } = useApp();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await refetchCourts();
+    setRefreshing(false);
+  }, [refetchCourts]);
   const [showCityPicker, setShowCityPicker] = useState(false);
 
   const activeCourts = courts.filter((c) => (playerCounts[c.id] ?? 0) > 0).length;
@@ -204,6 +212,9 @@ export default function CourtsScreen() {
       <ScrollView
         contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 100 }]}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.accent} />
+        }
       >
         {courts.length === 0 ? (
           <View style={styles.empty}>
