@@ -3,6 +3,7 @@ import { createServer, type Server } from "node:http";
 import { Pool } from "pg";
 import * as fs from "fs";
 import * as path from "path";
+import { CA_COURTS } from "./ca-courts";
 
 // ─── Database ─────────────────────────────────────────────────────────────────
 
@@ -127,7 +128,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ["Alaska","AK",[["Anchorage",61.2181,-149.9003],["Fairbanks",64.8378,-147.7164],["Juneau",58.3005,-134.4197],["Wasilla",61.5814,-149.4394],["Sitka",57.0531,-135.3300]]],
         ["Arizona","AZ",[["Phoenix",33.4484,-112.0740],["Tucson",32.2226,-110.9747],["Mesa",33.4152,-111.8315],["Chandler",33.3062,-111.8413],["Scottsdale",33.4942,-111.9261]]],
         ["Arkansas","AR",[["Little Rock",34.7465,-92.2896],["Fort Smith",35.3859,-94.3985],["Fayetteville",36.0822,-94.1719],["Springdale",36.1867,-94.1288],["Jonesboro",35.8423,-90.7043]]],
-        ["California","CA",[["Los Angeles",34.0522,-118.2437],["San Francisco",37.7749,-122.4194],["San Diego",32.7157,-117.1611],["Sacramento",38.5816,-121.4944],["Fresno",36.7378,-119.7871]]],
+        // California handled separately via CA_COURTS (169 real courts)
         ["Colorado","CO",[["Denver",39.7392,-104.9903],["Colorado Springs",38.8339,-104.8214],["Aurora",39.7294,-104.8319],["Fort Collins",40.5853,-105.0844],["Boulder",40.0150,-105.2705]]],
         ["Connecticut","CT",[["Hartford",41.7637,-72.6851],["New Haven",41.3082,-72.9279],["Bridgeport",41.1865,-73.1952],["Stamford",41.0534,-73.5387],["Waterbury",41.5582,-73.0515]]],
         ["Delaware","DE",[["Wilmington",39.7447,-75.5484],["Dover",39.1582,-75.5244],["Newark",39.6837,-75.7497],["Middletown",39.4493,-75.7163],["Smyrna",39.2993,-75.6035]]],
@@ -207,6 +208,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           courts = courts.concat(makeCourts(stateName, stateAbbr, cityName, lat, lon, si, ci));
         }
       }
+
+      // Append the 169 original California courts
+      courts = courts.concat(CA_COURTS.map(c => ({ ...c, type: c.type as string, surface: c.surface as string })));
 
       const chunkSize = 50;
       for (let i = 0; i < courts.length; i += chunkSize) {
