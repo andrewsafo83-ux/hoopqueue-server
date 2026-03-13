@@ -6,3 +6,21 @@ id = "9ZArWuDTxo9UX6ezWuNnL"
 uri = "file://attached_assets/generated_videos/hoopqueue_appstore_promo.mp4"
 type = "video"
 title = "HoopQueue — App Store Promo Video"
+
+[[outputs]]
+id = "V4WRqax3TDK-UUAKuVQsV"
+uri = "file://attached_assets/generated_images/screenshot_map.png"
+type = "image"
+title = "Screenshot 1 — Map View"
+
+[[outputs]]
+id = "vx2FUfZzuxdQcNZKDaGL1"
+uri = "file://attached_assets/generated_images/screenshot_courts.png"
+type = "image"
+title = "Screenshot 2 — Courts List"
+
+[[outputs]]
+id = "bOTgfIvkp061sxmXGjeKP"
+uri = "file://attached_assets/generated_images/screenshot_court_detail.png"
+type = "image"
+title = "Screenshot 3 — Court Detail & Live Feed"
