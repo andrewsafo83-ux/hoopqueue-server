@@ -24,3 +24,21 @@ id = "bOTgfIvkp061sxmXGjeKP"
 uri = "file://attached_assets/generated_images/screenshot_court_detail.png"
 type = "image"
 title = "Screenshot 3 — Court Detail & Live Feed"
+
+[[outputs]]
+id = "du8qgQtQwMoEF2VM-Kq0y"
+uri = "file://attached_assets/generated_images/screenshot_map_v2.png"
+type = "image"
+title = "Screenshot 1 — Map View"
+
+[[outputs]]
+id = "JueNFQMeNIofadog_pL7N"
+uri = "file://attached_assets/generated_images/screenshot_courts_v2.png"
+type = "image"
+title = "Screenshot 2 — Courts List"
+
+[[outputs]]
+id = "nvzA6LIK1DfcoUR5R9ts-"
+uri = "file://attached_assets/generated_images/screenshot_courtdetail_v2.png"
+type = "image"
+title = "Screenshot 3 — Court Detail & Live Feed"
