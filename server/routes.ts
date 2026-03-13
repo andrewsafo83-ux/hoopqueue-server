@@ -1,6 +1,8 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "node:http";
 import { Pool } from "pg";
+import * as fs from "fs";
+import * as path from "path";
 
 // ─── Database ─────────────────────────────────────────────────────────────────
 
@@ -382,6 +384,97 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (err) {
       console.error("DM send error:", err);
       res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // ── Admin page ─────────────────────────────────────────────────────────────
+
+  app.get("/admin", (_req: Request, res: Response) => {
+    const adminPath = path.resolve(process.cwd(), "server", "templates", "admin.html");
+    res.status(200).send(fs.readFileSync(adminPath, "utf-8"));
+  });
+
+  // ── Courts (public) ────────────────────────────────────────────────────────
+
+  app.get("/api/courts", async (_req: Request, res: Response) => {
+    try {
+      const result = await pool.query(
+        `SELECT id, name, short_name AS "shortName", address, city, state, country,
+                latitude, longitude, type, surface, hoops, description,
+                base_players_playing AS "basePlayersPlaying", max_players AS "maxPlayers"
+         FROM courts ORDER BY city, name`
+      );
+      res.json(result.rows);
+    } catch (err) {
+      console.error("Fetch courts error:", err);
+      res.status(500).json({ message: "Failed to fetch courts" });
+    }
+  });
+
+  // ── Courts admin (password protected) ──────────────────────────────────────
+
+  function checkAdminPassword(req: Request, res: Response): boolean {
+    const adminPassword = process.env.ADMIN_PASSWORD;
+    const provided = req.headers["x-admin-password"] || req.body?.adminPassword;
+    if (!adminPassword || provided !== adminPassword) {
+      res.status(403).json({ message: "Forbidden" });
+      return false;
+    }
+    return true;
+  }
+
+  function slugify(name: string): string {
+    return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+  }
+
+  app.post("/api/admin/courts", async (req: Request, res: Response) => {
+    if (!checkAdminPassword(req, res)) return;
+    const { name, shortName, address, city, state, country, latitude, longitude, type, surface, hoops, description, basePlayersPlaying, maxPlayers } = req.body;
+    if (!name || !shortName || !address || !city || !latitude || !longitude || !type || !surface || !description) {
+      return res.status(400).json({ message: "Missing required fields" });
+    }
+    const id = slugify(name) + "-" + Date.now().toString(36);
+    try {
+      const result = await pool.query(
+        `INSERT INTO courts (id, name, short_name, address, city, state, country, latitude, longitude, type, surface, hoops, description, base_players_playing, max_players)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+        [id, name, shortName, address, city, state ?? "CA", country ?? "US", latitude, longitude, type, surface, hoops ?? 2, description, basePlayersPlaying ?? 5, maxPlayers ?? 10]
+      );
+      res.status(201).json(result.rows[0]);
+    } catch (err) {
+      console.error("Create court error:", err);
+      res.status(500).json({ message: "Failed to create court" });
+    }
+  });
+
+  app.put("/api/admin/courts/:id", async (req: Request, res: Response) => {
+    if (!checkAdminPassword(req, res)) return;
+    const { name, shortName, address, city, state, country, latitude, longitude, type, surface, hoops, description, basePlayersPlaying, maxPlayers } = req.body;
+    try {
+      const result = await pool.query(
+        `UPDATE courts SET name=$1, short_name=$2, address=$3, city=$4, state=$5, country=$6,
+         latitude=$7, longitude=$8, type=$9, surface=$10, hoops=$11, description=$12,
+         base_players_playing=$13, max_players=$14
+         WHERE id=$15 RETURNING *`,
+        [name, shortName, address, city, state ?? "CA", country ?? "US", latitude, longitude, type, surface, hoops ?? 2, description, basePlayersPlaying ?? 5, maxPlayers ?? 10, req.params.id]
+      );
+      if (result.rowCount === 0) return res.status(404).json({ message: "Court not found" });
+      res.json(result.rows[0]);
+    } catch (err) {
+      console.error("Update court error:", err);
+      res.status(500).json({ message: "Failed to update court" });
+    }
+  });
+
+  app.delete("/api/admin/courts/:id", async (req: Request, res: Response) => {
+    if (!checkAdminPassword(req, res)) return;
+    try {
+      const result = await pool.query("DELETE FROM courts WHERE id=$1", [req.params.id]);
+      if (result.rowCount === 0) return res.status(404).json({ message: "Court not found" });
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Delete court error:", err);
+      res.status(500).json({ message: "Failed to delete court" });
     }
   });
 

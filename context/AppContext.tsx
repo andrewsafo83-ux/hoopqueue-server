@@ -8,8 +8,10 @@ import React, {
   ReactNode,
 } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { COURTS, Court, SkillLevel, CITIES } from "@/data/courts";
-import { apiRequest } from "@/lib/query-client";
+import { Court, SkillLevel, CITIES } from "@/data/courts";
+import { apiRequest, getApiUrl } from "@/lib/query-client";
+
+export { Court, CITIES };
 
 const STORAGE_KEYS = {
   PROFILE: "rnl_profile_v2",
@@ -37,6 +39,7 @@ export interface WaitlistEntry {
 interface AppContextValue {
   profile: UserProfile | null;
   courts: Court[];
+  allCourts: Court[];
   waitlists: Record<string, WaitlistEntry[]>;
   playerCounts: Record<string, number>;
   isLoaded: boolean;
@@ -49,6 +52,7 @@ interface AppContextValue {
   setCourtFilter: (f: "all" | "indoor" | "outdoor") => void;
   cityFilter: string;
   setCityFilter: (city: string) => void;
+  availableCities: string[];
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -57,42 +61,64 @@ function generateUserId(): string {
   return Date.now().toString() + Math.random().toString(36).substring(2, 9);
 }
 
-function seedPlayerCounts(): Record<string, number> {
+function seedPlayerCounts(courtList: Court[]): Record<string, number> {
   const counts: Record<string, number> = {};
-  for (const court of COURTS) {
+  for (const court of courtList) {
     const variance = Math.floor(Math.random() * 3) - 1;
     counts[court.id] = Math.max(0, Math.min(court.maxPlayers, court.basePlayersPlaying + variance));
   }
   return counts;
 }
 
+async function fetchCourtsFromApi(): Promise<Court[]> {
+  try {
+    const url = new URL("/api/courts", getApiUrl());
+    const res = await fetch(url.toString());
+    if (!res.ok) throw new Error("Failed to fetch courts");
+    return await res.json();
+  } catch {
+    return [];
+  }
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [waitlists, setWaitlists] = useState<Record<string, WaitlistEntry[]>>({});
-  const [playerCounts, setPlayerCounts] = useState<Record<string, number>>(seedPlayerCounts());
+  const [playerCounts, setPlayerCounts] = useState<Record<string, number>>({});
   const [isLoaded, setIsLoaded] = useState(false);
   const [courtFilter, setCourtFilter] = useState<"all" | "indoor" | "outdoor">("all");
   const [cityFilter, setCityFilter] = useState<string>("All Cities");
+  const [allCourts, setAllCourts] = useState<Court[]>([]);
 
   useEffect(() => {
     async function loadData() {
       try {
-        const [profileStr, waitlistsStr, countsStr] = await Promise.all([
+        const [profileStr, waitlistsStr, countsStr, fetchedCourts] = await Promise.all([
           AsyncStorage.getItem(STORAGE_KEYS.PROFILE),
           AsyncStorage.getItem(STORAGE_KEYS.WAITLISTS),
           AsyncStorage.getItem(STORAGE_KEYS.PLAYER_COUNTS),
+          fetchCourtsFromApi(),
         ]);
 
-        if (profileStr) {
-          setProfile(JSON.parse(profileStr));
-        }
-        if (waitlistsStr) {
-          setWaitlists(JSON.parse(waitlistsStr));
-        }
+        if (profileStr) setProfile(JSON.parse(profileStr));
+        if (waitlistsStr) setWaitlists(JSON.parse(waitlistsStr));
+
+        const courtList = fetchedCourts.length > 0 ? fetchedCourts : [];
+        setAllCourts(courtList);
+
         if (countsStr) {
-          setPlayerCounts(JSON.parse(countsStr));
+          const parsed = JSON.parse(countsStr);
+          // Seed any new courts not yet in stored counts
+          const updated = { ...parsed };
+          for (const court of courtList) {
+            if (!(court.id in updated)) {
+              const variance = Math.floor(Math.random() * 3) - 1;
+              updated[court.id] = Math.max(0, Math.min(court.maxPlayers, court.basePlayersPlaying + variance));
+            }
+          }
+          setPlayerCounts(updated);
         } else {
-          const seeded = seedPlayerCounts();
+          const seeded = seedPlayerCounts(courtList);
           setPlayerCounts(seeded);
           await AsyncStorage.setItem(STORAGE_KEYS.PLAYER_COUNTS, JSON.stringify(seeded));
         }
@@ -105,16 +131,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     loadData();
   }, []);
 
-  // Only simulate activity for courts that already have players
+  // Simulate activity
   useEffect(() => {
+    if (allCourts.length === 0) return;
     const interval = setInterval(() => {
       setPlayerCounts((prev) => {
         const updated = { ...prev };
-        // Only pick courts that currently have players
         const activeCourts = Object.keys(updated).filter((k) => (updated[k] ?? 0) > 0);
         if (activeCourts.length === 0) return updated;
         const randomKey = activeCourts[Math.floor(Math.random() * activeCourts.length)];
-        const court = COURTS.find((c) => c.id === randomKey);
+        const court = allCourts.find((c) => c.id === randomKey);
         if (court) {
           const delta = Math.random() < 0.5 ? 1 : -1;
           const newVal = Math.max(0, Math.min(court.maxPlayers, (updated[randomKey] ?? 0) + delta));
@@ -124,14 +150,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
     }, 8000);
     return () => clearInterval(interval);
-  }, []);
+  }, [allCourts]);
 
   const updateProfile = useCallback(async (username: string, email: string, skillLevel: SkillLevel) => {
     const userId = profile?.userId ?? generateUserId();
     const newProfile: UserProfile = { userId, username, email, skillLevel };
     setProfile(newProfile);
     await AsyncStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(newProfile));
-    // Persist to backend database
     try {
       await apiRequest("POST", "/api/users", { userId, username, email, skillLevel });
     } catch (err) {
@@ -184,16 +209,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [profile, waitlists]);
 
   const courts = useMemo(() => {
-    return COURTS.filter((c) => {
+    return allCourts.filter((c) => {
       const typeMatch = courtFilter === "all" || c.type === courtFilter;
       const cityMatch = cityFilter === "All Cities" || c.city === cityFilter;
       return typeMatch && cityMatch;
     });
-  }, [courtFilter, cityFilter]);
+  }, [allCourts, courtFilter, cityFilter]);
+
+  const availableCities = useMemo(() => {
+    const cities = ["All Cities", ...Array.from(new Set(allCourts.map((c) => c.city))).sort()];
+    return cities;
+  }, [allCourts]);
 
   const value = useMemo<AppContextValue>(() => ({
     profile,
     courts,
+    allCourts,
     waitlists,
     playerCounts,
     isLoaded,
@@ -206,7 +237,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setCourtFilter,
     cityFilter,
     setCityFilter,
-  }), [profile, courts, waitlists, playerCounts, isLoaded, updateProfile, joinWaitlist, leaveWaitlist, isOnWaitlist, getMyPosition, courtFilter, setCourtFilter, cityFilter, setCityFilter]);
+    availableCities,
+  }), [profile, courts, allCourts, waitlists, playerCounts, isLoaded, updateProfile, joinWaitlist, leaveWaitlist, isOnWaitlist, getMyPosition, courtFilter, setCourtFilter, cityFilter, setCityFilter, availableCities]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }

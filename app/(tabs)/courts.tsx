@@ -14,7 +14,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useApp } from "@/context/AppContext";
-import { Court, CITIES } from "@/data/courts";
+import { Court } from "@/data/courts";
 import Colors from "@/constants/colors";
 
 function CourtCard({ court, count }: { court: Court; count: number }) {
@@ -117,7 +117,7 @@ function CityPicker({
           <View style={styles.pickerHandle} />
           <Text style={styles.pickerTitle}>Filter by City</Text>
           <ScrollView showsVerticalScrollIndicator={false}>
-            {CITIES.map((city) => (
+            {availableCities.map((city) => (
               <TouchableOpacity
                 key={city}
                 style={[styles.pickerItem, selected === city && styles.pickerItemActive]}
@@ -140,7 +140,7 @@ function CityPicker({
 
 export default function CourtsScreen() {
   const insets = useSafeAreaInsets();
-  const { courts, playerCounts, courtFilter, setCourtFilter, cityFilter, setCityFilter } = useApp();
+  const { courts, playerCounts, courtFilter, setCourtFilter, cityFilter, setCityFilter, availableCities } = useApp();
   const [showCityPicker, setShowCityPicker] = useState(false);
 
   const activeCourts = courts.filter((c) => (playerCounts[c.id] ?? 0) > 0).length;

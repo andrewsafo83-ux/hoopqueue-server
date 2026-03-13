@@ -19,7 +19,6 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useApp } from "@/context/AppContext";
-import { COURTS } from "@/data/courts";
 import Colors from "@/constants/colors";
 import { apiRequest } from "@/lib/query-client";
 
@@ -279,7 +278,7 @@ export default function CourtDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
   const qc = useQueryClient();
-  const { playerCounts, waitlists, profile, joinWaitlist, leaveWaitlist, isOnWaitlist, getMyPosition } = useApp();
+  const { playerCounts, waitlists, profile, joinWaitlist, leaveWaitlist, isOnWaitlist, getMyPosition, allCourts } = useApp();
 
   const [isJoinLoading, setIsJoinLoading] = useState(false);
   const [inputText, setInputText] = useState("");
@@ -287,7 +286,7 @@ export default function CourtDetailScreen() {
   const inputRef = useRef<TextInput>(null);
   const scrollRef = useRef<ScrollView>(null);
 
-  const court = COURTS.find((c) => c.id === id);
+  const court = allCourts.find((c) => c.id === id);
 
   // ── Messages query (live polling) ──────────────────────────────────────────
   const { data: messages = [] } = useQuery<CourtMessage[]>({
