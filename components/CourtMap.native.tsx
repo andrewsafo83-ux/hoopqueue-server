@@ -16,8 +16,8 @@ import { useApp } from "@/context/AppContext";
 import { Court, INITIAL_REGION } from "@/data/courts";
 import Colors from "@/constants/colors";
 
-// Keep well below what crashes — custom view markers are expensive
-const MAX_MARKERS = 30;
+// Hard cap — native pins are fast but keep it reasonable
+const MAX_MARKERS = 40;
 const ZOOM_THRESHOLD = 8;
 
 function LiveDot() {
@@ -39,8 +39,8 @@ function LiveDot() {
   );
 }
 
-// Minimal marker — just a small circle with a player count number.
-// Avoids Ionicons and complex layout which are very expensive at scale.
+// Pure native pin — no custom children, no JS bridge rendering per marker.
+// pinColor drives colour; the OS renders the pin entirely natively.
 function CourtMarker({
   court,
   count,
@@ -52,18 +52,15 @@ function CourtMarker({
 }) {
   const isFull = count >= court.maxPlayers;
   const hasPlayers = count > 0;
-  const dotColor = isFull ? Colors.red : hasPlayers ? Colors.green : "#555566";
+  const pinColor = isFull ? "#EF4444" : hasPlayers ? "#22C55E" : "#6366F1";
+
   return (
     <Marker
       coordinate={{ latitude: court.latitude, longitude: court.longitude }}
+      pinColor={pinColor}
       onPress={onPress}
       tracksViewChanges={false}
-      anchor={{ x: 0.5, y: 0.5 }}
-    >
-      <View style={[styles.dot, { borderColor: dotColor }]}>
-        <Text style={[styles.dotCount, { color: dotColor }]}>{count}</Text>
-      </View>
-    </Marker>
+    />
   );
 }
 
@@ -87,11 +84,11 @@ export default function CourtMap() {
   const [selectedCourt, setSelectedCourt] = useState<Court | null>(null);
   const [region, setRegion] = useState<Region | null>(null);
 
-  // Debounce region updates so markers don't remount on every animation frame
+  // 400ms debounce so markers only update after the user stops panning
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleRegionChange = useCallback((r: Region) => {
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
-    debounceTimer.current = setTimeout(() => setRegion(r), 300);
+    debounceTimer.current = setTimeout(() => setRegion(r), 400);
   }, []);
 
   const visibleCourts = useMemo(() => {
@@ -99,10 +96,11 @@ export default function CourtMap() {
     const { latitude, longitude, latitudeDelta, longitudeDelta } = region;
     if (latitudeDelta > ZOOM_THRESHOLD) return [];
 
-    const minLat = latitude - latitudeDelta / 2;
-    const maxLat = latitude + latitudeDelta / 2;
-    const minLon = longitude - longitudeDelta / 2;
-    const maxLon = longitude + longitudeDelta / 2;
+    const pad = 0.05; // small buffer so markers don't pop in at the edge
+    const minLat = latitude - latitudeDelta / 2 - pad;
+    const maxLat = latitude + latitudeDelta / 2 + pad;
+    const minLon = longitude - longitudeDelta / 2 - pad;
+    const maxLon = longitude + longitudeDelta / 2 + pad;
 
     const inView = allCourts.filter((c) => {
       if (courtFilter !== "all" && c.type !== courtFilter) return false;
@@ -114,7 +112,7 @@ export default function CourtMap() {
       );
     });
 
-    // Active courts first, then cap hard at MAX_MARKERS
+    // Active courts first
     const active = inView.filter((c) => (playerCounts[c.id] ?? 0) > 0);
     const inactive = inView.filter((c) => (playerCounts[c.id] ?? 0) === 0);
     return [...active, ...inactive].slice(0, MAX_MARKERS);
@@ -151,6 +149,7 @@ export default function CourtMap() {
         ))}
       </MapView>
 
+      {/* Top bar */}
       <View style={[styles.topBar, { top: insets.top + 12 }]}>
         <View style={styles.topBarInner}>
           <Text style={styles.topTitle}>HoopQueue</Text>
@@ -169,6 +168,21 @@ export default function CourtMap() {
             </TouchableOpacity>
           ))}
         </View>
+        {/* Legend */}
+        <View style={styles.legend}>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendDot, { backgroundColor: "#22C55E" }]} />
+            <Text style={styles.legendText}>Active</Text>
+          </View>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendDot, { backgroundColor: "#EF4444" }]} />
+            <Text style={styles.legendText}>Full</Text>
+          </View>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendDot, { backgroundColor: "#6366F1" }]} />
+            <Text style={styles.legendText}>Empty</Text>
+          </View>
+        </View>
       </View>
 
       {tooZoomedOut && (
@@ -186,15 +200,18 @@ export default function CourtMap() {
         </View>
       )}
 
+      {/* Court detail card */}
       {selectedCourt && (
         <View style={[styles.bottomCard, { bottom: insets.bottom + 90 }]}>
           <Pressable onPress={() => setSelectedCourt(null)} style={styles.dismissBtn}>
             <Ionicons name="close" size={18} color={Colors.textSecondary} />
           </Pressable>
+
           <Text style={styles.bottomCardName}>{selectedCourt.shortName}</Text>
           <Text style={styles.bottomCardAddress}>
-            {selectedCourt.city}, {selectedCourt.state}
+            {selectedCourt.city}, {selectedCourt.stateAbbr}
           </Text>
+
           <View style={styles.bottomCardStats}>
             <View style={styles.statPill}>
               <View
@@ -225,6 +242,7 @@ export default function CourtMap() {
               </Text>
             </View>
           </View>
+
           <TouchableOpacity
             style={styles.viewBtn}
             onPress={() =>
@@ -242,20 +260,6 @@ export default function CourtMap() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  // Minimal marker — small circle, just count text
-  dot: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    borderWidth: 2,
-    backgroundColor: "rgba(10,10,15,0.85)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  dotCount: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 11,
-  },
   topBar: {
     position: "absolute",
     left: 16,
@@ -294,7 +298,7 @@ const styles = StyleSheet.create({
     color: Colors.green,
     letterSpacing: 1,
   },
-  filterRow: { flexDirection: "row", gap: 8 },
+  filterRow: { flexDirection: "row", gap: 8, marginBottom: 10 },
   filterBtn: {
     paddingHorizontal: 14,
     paddingVertical: 6,
@@ -310,6 +314,25 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
   filterTextActive: { color: Colors.background, fontFamily: "Inter_600SemiBold" },
+  legend: {
+    flexDirection: "row",
+    gap: 14,
+  },
+  legendItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+  legendDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  legendText: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 11,
+    color: Colors.textSecondary,
+  },
   zoomHint: {
     position: "absolute",
     alignSelf: "center",
