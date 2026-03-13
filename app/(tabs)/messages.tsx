@@ -39,6 +39,7 @@ interface Conversation {
 interface SearchResult {
   user_id: string;
   username: string;
+  handle: string | null;
   skill_level: string;
   friendship_status: string | null;
   friendship_requester: string | null;
@@ -113,7 +114,7 @@ function SearchPanel({ myId, onClose }: { myId: string | null; onClose: () => vo
         <Ionicons name="search" size={16} color={Colors.textTertiary} style={{ marginRight: 8 }} />
         <TextInput
           style={styles.searchInput}
-          placeholder="Search by username…"
+          placeholder="Search by name or @username…"
           placeholderTextColor={Colors.textTertiary}
           value={query}
           onChangeText={setQuery}
@@ -148,6 +149,9 @@ function SearchPanel({ myId, onClose }: { myId: string | null; onClose: () => vo
                 </View>
                 <View style={styles.searchRowInfo}>
                   <Text style={styles.searchRowName}>{item.username}</Text>
+                  {item.handle ? (
+                    <Text style={styles.searchRowHandle}>@{item.handle}</Text>
+                  ) : null}
                   <SkillBadge level={item.skill_level} />
                 </View>
                 {alreadyFriends ? (
@@ -745,6 +749,11 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_600SemiBold",
     fontSize: 15,
     color: Colors.text,
+  },
+  searchRowHandle: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 12,
+    color: Colors.accent,
   },
   addBtn: {
     flexDirection: "row",

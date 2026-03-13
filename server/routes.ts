@@ -155,14 +155,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!q || q.length < 2) return res.json([]);
     try {
       const result = await pool.query(
-        `SELECT u.user_id, u.username, u.skill_level,
+        `SELECT u.user_id, u.username, u.handle, u.skill_level,
            f.status AS friendship_status,
            f.requester_id AS friendship_requester
          FROM users u
          LEFT JOIN friendships f
            ON (f.requester_id = u.user_id AND f.addressee_id = $2)
            OR (f.addressee_id = u.user_id AND f.requester_id = $2)
-         WHERE u.username ILIKE $1 AND u.user_id != $2
+         WHERE (u.username ILIKE $1 OR u.handle ILIKE $1) AND u.user_id != $2
          ORDER BY u.username ASC LIMIT 20`,
         [`%${q}%`, myId || "___none___"]
       );
