@@ -50,6 +50,20 @@
         {
           "locationWhenInUsePermission": "HoopQueue uses your location to show nearby basketball courts."
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#FF6B2C",
+          "sounds": []
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "HoopQueue needs access to your photos to set a profile picture."
+        }
       ]
     ],
     "experiments": {
