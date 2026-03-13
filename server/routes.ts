@@ -505,6 +505,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 base_players_playing AS "basePlayersPlaying", max_players AS "maxPlayers"
          FROM courts ORDER BY city, name`
       );
+      res.set("Cache-Control", "no-store");
       res.json(result.rows);
     } catch (err) {
       console.error("Fetch courts error:", err);

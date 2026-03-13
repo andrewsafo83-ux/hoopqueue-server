@@ -100,7 +100,7 @@ function seedPlayerCounts(courtList: Court[]): Record<string, number> {
 async function fetchCourtsFromApi(): Promise<Court[]> {
   try {
     const url = new URL("/api/courts", getApiUrl());
-    const res = await fetch(url.toString());
+    const res = await fetch(url.toString(), { cache: "no-store" });
     if (!res.ok) throw new Error("Failed to fetch courts");
     return await res.json();
   } catch {
