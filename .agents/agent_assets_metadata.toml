@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "9ZArWuDTxo9UX6ezWuNnL"
+uri = "file://attached_assets/generated_videos/hoopqueue_appstore_promo.mp4"
+type = "video"
+title = "HoopQueue — App Store Promo Video"
