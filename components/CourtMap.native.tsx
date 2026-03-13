@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useEffect, useMemo } from "react";
+import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import {
   View,
   Text,
@@ -16,8 +16,9 @@ import { useApp } from "@/context/AppContext";
 import { Court, INITIAL_REGION } from "@/data/courts";
 import Colors from "@/constants/colors";
 
-const MAX_MARKERS = 75;
-const ZOOM_THRESHOLD = 8; // latitudeDelta above which we hide markers
+// Keep well below what crashes — custom view markers are expensive
+const MAX_MARKERS = 30;
+const ZOOM_THRESHOLD = 8;
 
 function LiveDot() {
   const pulse = useRef(new Animated.Value(1)).current;
@@ -38,6 +39,8 @@ function LiveDot() {
   );
 }
 
+// Minimal marker — just a small circle with a player count number.
+// Avoids Ionicons and complex layout which are very expensive at scale.
 function CourtMarker({
   court,
   count,
@@ -48,20 +51,17 @@ function CourtMarker({
   onPress: () => void;
 }) {
   const isFull = count >= court.maxPlayers;
-  const borderColor = isFull ? Colors.red : count > 0 ? Colors.green : Colors.textTertiary;
+  const hasPlayers = count > 0;
+  const dotColor = isFull ? Colors.red : hasPlayers ? Colors.green : "#555566";
   return (
     <Marker
       coordinate={{ latitude: court.latitude, longitude: court.longitude }}
       onPress={onPress}
       tracksViewChanges={false}
+      anchor={{ x: 0.5, y: 0.5 }}
     >
-      <View style={[styles.markerContainer, { borderColor }]}>
-        <Text style={styles.markerCount}>{count}</Text>
-        <Ionicons
-          name={court.type === "indoor" ? "business" : "sunny"}
-          size={9}
-          color={borderColor}
-        />
+      <View style={[styles.dot, { borderColor: dotColor }]}>
+        <Text style={[styles.dotCount, { color: dotColor }]}>{count}</Text>
       </View>
     </Marker>
   );
@@ -87,10 +87,16 @@ export default function CourtMap() {
   const [selectedCourt, setSelectedCourt] = useState<Court | null>(null);
   const [region, setRegion] = useState<Region | null>(null);
 
+  // Debounce region updates so markers don't remount on every animation frame
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleRegionChange = useCallback((r: Region) => {
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    debounceTimer.current = setTimeout(() => setRegion(r), 300);
+  }, []);
+
   const visibleCourts = useMemo(() => {
     if (!region) return [];
     const { latitude, longitude, latitudeDelta, longitudeDelta } = region;
-
     if (latitudeDelta > ZOOM_THRESHOLD) return [];
 
     const minLat = latitude - latitudeDelta / 2;
@@ -108,7 +114,7 @@ export default function CourtMap() {
       );
     });
 
-    // Prioritise active courts, then cap
+    // Active courts first, then cap hard at MAX_MARKERS
     const active = inView.filter((c) => (playerCounts[c.id] ?? 0) > 0);
     const inactive = inView.filter((c) => (playerCounts[c.id] ?? 0) === 0);
     return [...active, ...inactive].slice(0, MAX_MARKERS);
@@ -133,7 +139,7 @@ export default function CourtMap() {
         customMapStyle={darkMapStyle}
         showsUserLocation
         showsMyLocationButton={false}
-        onRegionChangeComplete={(r) => setRegion(r)}
+        onRegionChangeComplete={handleRegionChange}
       >
         {visibleCourts.map((court) => (
           <CourtMarker
@@ -236,6 +242,20 @@ export default function CourtMap() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
+  // Minimal marker — small circle, just count text
+  dot: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 2,
+    backgroundColor: "rgba(10,10,15,0.85)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dotCount: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 11,
+  },
   topBar: {
     position: "absolute",
     left: 16,
@@ -290,20 +310,6 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
   filterTextActive: { color: Colors.background, fontFamily: "Inter_600SemiBold" },
-  markerContainer: {
-    backgroundColor: Colors.card,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderWidth: 1.5,
-    alignItems: "center",
-    gap: 2,
-  },
-  markerCount: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 14,
-    color: Colors.text,
-  },
   zoomHint: {
     position: "absolute",
     alignSelf: "center",
