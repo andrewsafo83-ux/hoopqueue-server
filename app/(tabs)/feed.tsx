@@ -376,7 +376,7 @@ function CreatePostModal({
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
         {/* Header */}
-        <View style={styles.createHeader}>
+        <View style={[styles.createHeader, { paddingTop: insets.top + 8 }]}>
           <TouchableOpacity onPress={handleClose}>
             <Text style={styles.cancelText}>Cancel</Text>
           </TouchableOpacity>
@@ -993,7 +993,6 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 16,
-    paddingTop: 8,
     paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
