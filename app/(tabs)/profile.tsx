@@ -47,6 +47,7 @@ export default function ProfileScreen() {
   const stableUserId = useRef(profile?.userId ?? generateUserId());
   const displayUserId = profile?.userId ?? stableUserId.current;
   const [username, setUsername] = useState(profile?.username ?? "");
+  const [handle, setHandle] = useState(profile?.handle ?? "");
   const [email, setEmail] = useState(profile?.email ?? "");
   const [phone, setPhone] = useState(profile?.phone ?? "");
   const [skillLevel, setSkillLevel] = useState<SkillLevel>(
@@ -56,15 +57,17 @@ export default function ProfileScreen() {
   const [isSaving, setIsSaving] = useState(false);
   const [emailError, setEmailError] = useState("");
   const [phoneError, setPhoneError] = useState("");
+  const [handleError, setHandleError] = useState("");
 
   useEffect(() => {
     if (profile) {
       setUsername(profile.username);
+      setHandle(profile.handle ?? "");
       setEmail(profile.email ?? "");
       setPhone(profile.phone ?? "");
       setSkillLevel(profile.skillLevel);
     }
-  }, [profile?.username, profile?.email, profile?.phone, profile?.skillLevel]);
+  }, [profile?.username, profile?.handle, profile?.email, profile?.phone, profile?.skillLevel]);
 
   const myWaitlists = Object.values(waitlists).filter((list) =>
     list.some((e) => e.userId === profile?.userId)
@@ -94,6 +97,10 @@ export default function ProfileScreen() {
       setEmailError("Please enter a valid email address");
       return;
     }
+    if (handle.trim() && !/^[a-zA-Z0-9_]{3,30}$/.test(handle.trim())) {
+      setHandleError("Letters, numbers, and underscores only (3–30 chars)");
+      return;
+    }
     if (phone.trim()) {
       const digits = phone.replace(/\D/g, "");
       if (digits.length !== 10) {
@@ -103,12 +110,13 @@ export default function ProfileScreen() {
     }
     setEmailError("");
     setPhoneError("");
+    setHandleError("");
     setIsSaving(true);
     if (Platform.OS !== "web") {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
     try {
-      await updateProfile(username.trim(), email.trim().toLowerCase(), phone.trim(), skillLevel, stableUserId.current);
+      await updateProfile(username.trim(), handle.trim().toLowerCase(), email.trim().toLowerCase(), phone.trim(), skillLevel, stableUserId.current);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (err: any) {
@@ -124,6 +132,7 @@ export default function ProfileScreen() {
 
   const hasChanges =
     username !== (profile?.username ?? "") ||
+    handle !== (profile?.handle ?? "") ||
     email !== (profile?.email ?? "") ||
     phone !== (profile?.phone ?? "") ||
     skillLevel !== (profile?.skillLevel ?? "Intermediate");
@@ -146,6 +155,9 @@ export default function ProfileScreen() {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.avatarName}>{profile.username}</Text>
+            {profile.handle ? (
+              <Text style={styles.avatarHandle}>@{profile.handle}</Text>
+            ) : null}
             {profile.email ? (
               <Text style={styles.avatarEmail}>{profile.email}</Text>
             ) : null}
@@ -209,11 +221,42 @@ export default function ProfileScreen() {
           autoCorrect={false}
           autoCapitalize="words"
         />
-        <View style={styles.idRow}>
-          <Ionicons name="finger-print-outline" size={12} color={Colors.textTertiary} />
-          <Text style={styles.idText}>Player ID: {displayUserId}</Text>
+        <Text style={styles.fieldHint}>Visible to other players on waitlists and the live feed</Text>
+      </View>
+
+      <View style={styles.section}>
+        <View style={styles.labelRow}>
+          <Text style={styles.sectionLabel}>Username</Text>
+          <View style={styles.publicBadge}>
+            <Ionicons name="eye-outline" size={11} color={Colors.accent} />
+            <Text style={styles.publicBadgeText}>Public</Text>
+          </View>
         </View>
-        <Text style={styles.fieldHint}>Your name is visible to other players on waitlists and the live feed</Text>
+        <View style={styles.handleInputRow}>
+          <Text style={styles.handleAt}>@</Text>
+          <TextInput
+            style={[styles.handleInput, handleError ? styles.inputError : null]}
+            value={handle}
+            onChangeText={(t) => {
+              setHandle(t.toLowerCase().replace(/[^a-z0-9_]/g, ""));
+              if (handleError) setHandleError("");
+            }}
+            placeholder="andrewsafo5"
+            placeholderTextColor={Colors.textTertiary}
+            maxLength={30}
+            returnKeyType="next"
+            autoCorrect={false}
+            autoCapitalize="none"
+          />
+        </View>
+        {handleError ? (
+          <View style={styles.errorRow}>
+            <Ionicons name="alert-circle-outline" size={13} color={Colors.red} />
+            <Text style={styles.errorText}>{handleError}</Text>
+          </View>
+        ) : (
+          <Text style={styles.fieldHint}>Optional — how other players can find you</Text>
+        )}
       </View>
 
       <View style={styles.section}>
@@ -419,8 +462,31 @@ const styles = StyleSheet.create({
   },
   avatarText: { fontFamily: "Inter_700Bold", fontSize: 26, color: Colors.accent },
   avatarName: { fontFamily: "Inter_700Bold", fontSize: 18, color: Colors.text, marginBottom: 2 },
+  avatarHandle: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: Colors.accent, marginBottom: 3 },
   avatarId: { fontFamily: "Inter_400Regular", fontSize: 11, color: Colors.textTertiary, marginBottom: 8, letterSpacing: 0.3 },
-  avatarEmail: { fontFamily: "Inter_400Regular", fontSize: 12, color: Colors.textSecondary, marginBottom: 6 },
+  avatarEmail: { fontFamily: "Inter_400Regular", fontSize: 12, color: Colors.textSecondary, marginBottom: 4 },
+  handleInputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: Colors.card,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: 16,
+  },
+  handleAt: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 16,
+    color: Colors.accent,
+    marginRight: 2,
+  },
+  handleInput: {
+    flex: 1,
+    paddingVertical: 14,
+    fontFamily: "Inter_500Medium",
+    fontSize: 16,
+    color: Colors.text,
+  },
   skillBadge: {
     alignSelf: "flex-start",
     paddingHorizontal: 10,

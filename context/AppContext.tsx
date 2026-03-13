@@ -37,6 +37,7 @@ const STORAGE_KEYS = {
 export interface UserProfile {
   userId: string;
   username: string;
+  handle?: string;
   email: string;
   phone?: string;
   skillLevel: SkillLevel;
@@ -65,7 +66,7 @@ interface AppContextValue {
   playerCounts: Record<string, number>;
   isLoaded: boolean;
   userLocation: UserLocation | null;
-  updateProfile: (username: string, email: string, phone: string, skillLevel: SkillLevel, forceUserId?: string) => Promise<void>;
+  updateProfile: (username: string, handle: string, email: string, phone: string, skillLevel: SkillLevel, forceUserId?: string) => Promise<void>;
   joinWaitlist: (courtId: string) => Promise<void>;
   leaveWaitlist: (courtId: string) => Promise<void>;
   isOnWaitlist: (courtId: string) => boolean;
@@ -196,13 +197,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(interval);
   }, [allCourts]);
 
-  const updateProfile = useCallback(async (username: string, email: string, phone: string, skillLevel: SkillLevel, forceUserId?: string) => {
+  const updateProfile = useCallback(async (username: string, handle: string, email: string, phone: string, skillLevel: SkillLevel, forceUserId?: string) => {
     const userId = profile?.userId ?? forceUserId ?? generateUserId();
-    const newProfile: UserProfile = { userId, username, email, phone: phone || undefined, skillLevel };
+    const newProfile: UserProfile = { userId, username, handle: handle || undefined, email, phone: phone || undefined, skillLevel };
     setProfile(newProfile);
     await AsyncStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(newProfile));
     try {
-      await apiRequest("POST", "/api/users", { userId, username, email, phone: phone || undefined, skillLevel });
+      await apiRequest("POST", "/api/users", { userId, username, handle: handle || undefined, email, phone: phone || undefined, skillLevel });
     } catch (err) {
       console.warn("Could not sync profile to server:", err);
     }

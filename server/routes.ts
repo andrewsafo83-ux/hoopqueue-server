@@ -109,13 +109,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ── Users ──────────────────────────────────────────────────────────────────
 
   app.post("/api/users", async (req: Request, res: Response) => {
-    const { userId, username, email, phone, skillLevel } = req.body;
+    const { userId, username, handle, email, phone, skillLevel } = req.body;
     if (!userId || !username || !email) {
       return res.status(400).json({ message: "userId, username, and email are required" });
     }
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       return res.status(400).json({ message: "Invalid email address" });
+    }
+    if (handle) {
+      if (!/^[a-zA-Z0-9_]{3,30}$/.test(handle.trim())) {
+        return res.status(400).json({ message: "Username can only contain letters, numbers, and underscores (3–30 chars)." });
+      }
     }
     if (phone) {
       const digits = phone.replace(/\D/g, "");
@@ -125,13 +130,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     try {
       const result = await pool.query(
-        `INSERT INTO users (user_id, username, email, phone, skill_level, updated_at)
-         VALUES ($1, $2, $3, $4, $5, NOW())
+        `INSERT INTO users (user_id, username, handle, email, phone, skill_level, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, NOW())
          ON CONFLICT (user_id)
-         DO UPDATE SET username = EXCLUDED.username, email = EXCLUDED.email,
+         DO UPDATE SET username = EXCLUDED.username, handle = EXCLUDED.handle, email = EXCLUDED.email,
            phone = EXCLUDED.phone, skill_level = EXCLUDED.skill_level, updated_at = NOW()
-         RETURNING user_id, username, skill_level`,
-        [userId, username.trim(), email.trim().toLowerCase(), phone?.trim() || null, skillLevel ?? "Intermediate"]
+         RETURNING user_id, username, handle, skill_level`,
+        [userId, username.trim(), handle?.trim().toLowerCase() || null, email.trim().toLowerCase(), phone?.trim() || null, skillLevel ?? "Intermediate"]
       );
       res.status(200).json(result.rows[0]);
     } catch (err: any) {
