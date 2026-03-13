@@ -57,6 +57,29 @@ function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).substring(2, 8);
 }
 
+// ─── Push Notifications ───────────────────────────────────────────────────────
+
+async function sendPushNotifications(
+  tokens: string[],
+  title: string,
+  body: string,
+  data: Record<string, string> = {}
+): Promise<void> {
+  const valid = tokens.filter((t) => t && t.startsWith("ExponentPushToken["));
+  if (valid.length === 0) return;
+  try {
+    await fetch("https://exp.host/--/api/v2/push/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(
+        valid.map((to) => ({ to, title, body, data, sound: "default" }))
+      ),
+    });
+  } catch (err) {
+    console.warn("Push notification send failed:", err);
+  }
+}
+
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -274,6 +297,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         `INSERT INTO friendships (requester_id, addressee_id, status) VALUES ($1, $2, 'pending')`,
         [requesterId, addresseeId]
       );
+      const [requesterRes, addresseeRes] = await Promise.all([
+        pool.query(`SELECT username FROM users WHERE user_id = $1`, [requesterId]),
+        pool.query(`SELECT push_token FROM users WHERE user_id = $1`, [addresseeId]),
+      ]);
+      const requesterName = requesterRes.rows[0]?.username ?? "Someone";
+      const addresseeToken = addresseeRes.rows[0]?.push_token;
+      if (addresseeToken) {
+        sendPushNotifications([addresseeToken], "New friend request 🏀", `${requesterName} wants to hoop with you!`, { screen: "messages" });
+      }
       res.status(201).json({ message: "Friend request sent" });
     } catch (err: any) {
       if (err.code === "23505") return res.status(409).json({ message: "Friend request already sent" });
@@ -454,9 +486,130 @@ export async function registerRoutes(app: Express): Promise<Server> {
         `INSERT INTO direct_messages (sender_id, receiver_id, text) VALUES ($1, $2, $3) RETURNING *`,
         [senderId, receiverId, trimmed]
       );
+      const senderRes = await pool.query(`SELECT username FROM users WHERE user_id = $1`, [senderId]);
+      const receiverRes = await pool.query(`SELECT push_token FROM users WHERE user_id = $1`, [receiverId]);
+      const senderName = senderRes.rows[0]?.username ?? "Someone";
+      const receiverToken = receiverRes.rows[0]?.push_token;
+      if (receiverToken) {
+        sendPushNotifications([receiverToken], `${senderName} 💬`, trimmed.length > 60 ? trimmed.slice(0, 60) + "…" : trimmed, { screen: "messages" });
+      }
       res.status(201).json(result.rows[0]);
     } catch (err) {
       console.error("DM send error:", err);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // ── Push token registration ────────────────────────────────────────────────
+
+  app.post("/api/users/:userId/push-token", async (req: Request, res: Response) => {
+    const { userId } = req.params;
+    const { token } = req.body;
+    if (!token) return res.status(400).json({ message: "token required" });
+    try {
+      await pool.query(
+        `UPDATE users SET push_token = $1 WHERE user_id = $2`,
+        [token, userId]
+      );
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("Push token save error:", err);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // ── Server-side Waitlists ──────────────────────────────────────────────────
+
+  app.get("/api/waitlists/:courtId", async (req: Request, res: Response) => {
+    const { courtId } = req.params;
+    try {
+      const result = await pool.query(
+        `SELECT user_id AS "userId", username, skill_level AS "skillLevel", joined_at AS "timestamp", position
+         FROM waitlists WHERE court_id = $1 ORDER BY position ASC`,
+        [courtId]
+      );
+      res.json(result.rows);
+    } catch (err) {
+      console.error("Waitlist fetch error:", err);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.post("/api/waitlists/:courtId/join", async (req: Request, res: Response) => {
+    const { courtId } = req.params;
+    const { userId, username, skillLevel } = req.body;
+    if (!userId || !username) return res.status(400).json({ message: "userId and username required" });
+    try {
+      const countRes = await pool.query(
+        `SELECT COUNT(*) AS count FROM waitlists WHERE court_id = $1`,
+        [courtId]
+      );
+      const position = parseInt(countRes.rows[0].count) + 1;
+      await pool.query(
+        `INSERT INTO waitlists (court_id, user_id, username, skill_level, position)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (court_id, user_id) DO NOTHING`,
+        [courtId, userId, username, skillLevel ?? "Intermediate", position]
+      );
+      const list = await pool.query(
+        `SELECT user_id AS "userId", username, skill_level AS "skillLevel", joined_at AS "timestamp", position
+         FROM waitlists WHERE court_id = $1 ORDER BY position ASC`,
+        [courtId]
+      );
+      res.status(201).json(list.rows);
+    } catch (err) {
+      console.error("Waitlist join error:", err);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.delete("/api/waitlists/:courtId/leave", async (req: Request, res: Response) => {
+    const { courtId } = req.params;
+    const { userId } = req.body;
+    if (!userId) return res.status(400).json({ message: "userId required" });
+    try {
+      const leavingRow = await pool.query(
+        `SELECT position FROM waitlists WHERE court_id = $1 AND user_id = $2`,
+        [courtId, userId]
+      );
+      if (leavingRow.rows.length === 0) return res.json({ ok: true });
+
+      const leavingPosition = leavingRow.rows[0].position;
+
+      await pool.query(
+        `DELETE FROM waitlists WHERE court_id = $1 AND user_id = $2`,
+        [courtId, userId]
+      );
+
+      await pool.query(
+        `UPDATE waitlists SET position = position - 1
+         WHERE court_id = $1 AND position > $2`,
+        [courtId, leavingPosition]
+      );
+
+      const courtRes = await pool.query(`SELECT name FROM courts WHERE id = $1`, [courtId]);
+      const courtName = courtRes.rows[0]?.name ?? "the court";
+
+      const promoted = await pool.query(
+        `SELECT w.user_id, u.push_token, w.position
+         FROM waitlists w
+         JOIN users u ON u.user_id = w.user_id
+         WHERE w.court_id = $1 AND w.position <= $2 AND u.push_token IS NOT NULL`,
+        [courtId, leavingPosition]
+      );
+
+      for (const row of promoted.rows) {
+        const pos = row.position;
+        const title = pos === 1 ? "You're next! 🏀" : `Waitlist update`;
+        const body = pos === 1
+          ? `You're first in line at ${courtName}!`
+          : `You moved up to #${pos} at ${courtName}`;
+        sendPushNotifications([row.push_token], title, body, { courtId });
+      }
+
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("Waitlist leave error:", err);
       res.status(500).json({ message: "Server error" });
     }
   });

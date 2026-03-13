@@ -9,6 +9,7 @@ import React, {
 } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Location from "expo-location";
+import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 import { Court, SkillLevel, CITIES } from "@/data/courts";
 import { apiRequest, getApiUrl } from "@/lib/query-client";
@@ -70,6 +71,7 @@ interface AppContextValue {
   updateProfile: (username: string, handle: string, email: string, phone: string, skillLevel: SkillLevel, forceUserId?: string) => Promise<void>;
   updateAvatar: (base64: string) => Promise<void>;
   refetchCourts: () => Promise<void>;
+  fetchCourtWaitlist: (courtId: string) => Promise<void>;
   joinWaitlist: (courtId: string) => Promise<void>;
   leaveWaitlist: (courtId: string) => Promise<void>;
   isOnWaitlist: (courtId: string) => boolean;
@@ -158,6 +160,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     loadData();
   }, []);
+
+  // Register for push notifications
+  useEffect(() => {
+    async function registerPushToken() {
+      if (Platform.OS === "web") return;
+      if (!profile) return;
+      try {
+        const { status: existing } = await Notifications.getPermissionsAsync();
+        let finalStatus = existing;
+        if (existing !== "granted") {
+          const { status } = await Notifications.requestPermissionsAsync();
+          finalStatus = status;
+        }
+        if (finalStatus !== "granted") return;
+        const tokenData = await Notifications.getExpoPushTokenAsync();
+        const token = tokenData.data;
+        await apiRequest("POST", `/api/users/${profile.userId}/push-token`, { token });
+      } catch (err) {
+        console.warn("Push token registration failed:", err);
+      }
+    }
+    registerPushToken();
+  }, [profile?.userId]);
 
   // Request location permission and get coordinates
   useEffect(() => {
@@ -249,38 +274,72 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [profile]);
 
+  const fetchCourtWaitlist = useCallback(async (courtId: string) => {
+    try {
+      const url = new URL(`/api/waitlists/${courtId}`, getApiUrl());
+      const res = await fetch(url.toString(), { cache: "no-store" });
+      if (!res.ok) return;
+      const rows: Array<{ userId: string; username: string; skillLevel: string; timestamp: string; position: number }> = await res.json();
+      const entries: WaitlistEntry[] = rows.map((r) => ({
+        waitId: r.userId,
+        courtId,
+        userId: r.userId,
+        username: r.username,
+        skillLevel: r.skillLevel as SkillLevel,
+        timestamp: new Date(r.timestamp).getTime(),
+        position: r.position,
+      }));
+      setWaitlists((prev) => ({ ...prev, [courtId]: entries }));
+    } catch (err) {
+      console.warn("Waitlist fetch error:", err);
+    }
+  }, []);
+
   const joinWaitlist = useCallback(async (courtId: string) => {
     if (!profile) return;
-    const existing = waitlists[courtId] ?? [];
-    const alreadyOn = existing.some((e) => e.userId === profile.userId);
-    if (alreadyOn) return;
-
-    const newEntry: WaitlistEntry = {
-      waitId: Date.now().toString() + Math.random().toString(36).substring(2, 6),
-      courtId,
-      userId: profile.userId,
-      username: profile.username,
-      skillLevel: profile.skillLevel,
-      timestamp: Date.now(),
-      position: existing.length + 1,
-    };
-
-    const updated = { ...waitlists, [courtId]: [...existing, newEntry] };
-    setWaitlists(updated);
-    await AsyncStorage.setItem(STORAGE_KEYS.WAITLISTS, JSON.stringify(updated));
-  }, [profile, waitlists]);
+    try {
+      const url = new URL(`/api/waitlists/${courtId}/join`, getApiUrl());
+      const res = await fetch(url.toString(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: profile.userId, username: profile.username, skillLevel: profile.skillLevel }),
+      });
+      if (!res.ok) return;
+      const rows: Array<{ userId: string; username: string; skillLevel: string; timestamp: string; position: number }> = await res.json();
+      const entries: WaitlistEntry[] = rows.map((r) => ({
+        waitId: r.userId,
+        courtId,
+        userId: r.userId,
+        username: r.username,
+        skillLevel: r.skillLevel as SkillLevel,
+        timestamp: new Date(r.timestamp).getTime(),
+        position: r.position,
+      }));
+      setWaitlists((prev) => ({ ...prev, [courtId]: entries }));
+    } catch (err) {
+      console.warn("Join waitlist error:", err);
+    }
+  }, [profile]);
 
   const leaveWaitlist = useCallback(async (courtId: string) => {
     if (!profile) return;
-    const existing = waitlists[courtId] ?? [];
-    const filtered = existing
-      .filter((e) => e.userId !== profile.userId)
-      .map((e, i) => ({ ...e, position: i + 1 }));
-
-    const updated = { ...waitlists, [courtId]: filtered };
-    setWaitlists(updated);
-    await AsyncStorage.setItem(STORAGE_KEYS.WAITLISTS, JSON.stringify(updated));
-  }, [profile, waitlists]);
+    try {
+      const url = new URL(`/api/waitlists/${courtId}/leave`, getApiUrl());
+      await fetch(url.toString(), {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: profile.userId }),
+      });
+      setWaitlists((prev) => {
+        const filtered = (prev[courtId] ?? [])
+          .filter((e) => e.userId !== profile.userId)
+          .map((e, i) => ({ ...e, position: i + 1 }));
+        return { ...prev, [courtId]: filtered };
+      });
+    } catch (err) {
+      console.warn("Leave waitlist error:", err);
+    }
+  }, [profile]);
 
   const isOnWaitlist = useCallback((courtId: string): boolean => {
     if (!profile) return false;
@@ -331,6 +390,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     updateProfile,
     updateAvatar,
     refetchCourts,
+    fetchCourtWaitlist,
     joinWaitlist,
     leaveWaitlist,
     isOnWaitlist,
@@ -341,7 +401,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     cityFilter,
     setCityFilter,
     availableCities,
-  }), [profile, courts, allCourts, waitlists, playerCounts, isLoaded, userLocation, updateProfile, updateAvatar, refetchCourts, joinWaitlist, leaveWaitlist, isOnWaitlist, getMyPosition, getDistanceMiles, courtFilter, setCourtFilter, cityFilter, setCityFilter, availableCities]);
+  }), [profile, courts, allCourts, waitlists, playerCounts, isLoaded, userLocation, updateProfile, updateAvatar, refetchCourts, fetchCourtWaitlist, joinWaitlist, leaveWaitlist, isOnWaitlist, getMyPosition, getDistanceMiles, courtFilter, setCourtFilter, cityFilter, setCityFilter, availableCities]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }

@@ -278,7 +278,7 @@ export default function CourtDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
   const qc = useQueryClient();
-  const { playerCounts, waitlists, profile, joinWaitlist, leaveWaitlist, isOnWaitlist, getMyPosition, allCourts } = useApp();
+  const { playerCounts, waitlists, profile, joinWaitlist, leaveWaitlist, isOnWaitlist, getMyPosition, allCourts, fetchCourtWaitlist } = useApp();
 
   const [isJoinLoading, setIsJoinLoading] = useState(false);
   const [inputText, setInputText] = useState("");
@@ -287,6 +287,14 @@ export default function CourtDetailScreen() {
   const scrollRef = useRef<ScrollView>(null);
 
   const court = allCourts.find((c) => c.id === id);
+
+  // ── Load waitlist from server ──────────────────────────────────────────────
+  useEffect(() => {
+    if (!id) return;
+    fetchCourtWaitlist(id);
+    const interval = setInterval(() => fetchCourtWaitlist(id), 10000);
+    return () => clearInterval(interval);
+  }, [id, fetchCourtWaitlist]);
 
   // ── Messages query (live polling) ──────────────────────────────────────────
   const { data: messages = [] } = useQuery<CourtMessage[]>({
