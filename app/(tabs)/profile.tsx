@@ -148,6 +148,9 @@ export default function ProfileScreen() {
             {profile.email ? (
               <Text style={styles.avatarEmail}>{profile.email}</Text>
             ) : null}
+            {profile.phone ? (
+              <Text style={styles.avatarEmail}>{profile.phone}</Text>
+            ) : null}
             <View style={[styles.skillBadge, { backgroundColor: SKILL_COLORS[profile.skillLevel] + "22" }]}>
               <Text style={[styles.skillBadgeText, { color: SKILL_COLORS[profile.skillLevel] }]}>
                 {profile.skillLevel}
