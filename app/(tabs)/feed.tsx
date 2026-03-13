@@ -314,7 +314,7 @@ function CreatePostModal({
         result = await ImagePicker.launchCameraAsync({
           allowsEditing: true,
           aspect: [1, 1],
-          quality: 0.45,
+          quality: 0.3,
           base64: true,
           exif: false,
         });
@@ -328,7 +328,7 @@ function CreatePostModal({
           mediaTypes: ImagePicker.MediaTypeOptions.Images,
           allowsEditing: true,
           aspect: [1, 1],
-          quality: 0.45,
+          quality: 0.3,
           base64: true,
           exif: false,
         });
