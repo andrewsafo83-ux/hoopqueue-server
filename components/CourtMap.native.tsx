@@ -1,422 +1,414 @@
 
-import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import React, { useMemo, useState, useCallback } from "react";
 import {
   View,
   Text,
   StyleSheet,
+  FlatList,
   TouchableOpacity,
-  Pressable,
-  Animated,
+  Linking,
+  Platform,
+  RefreshControl,
 } from "react-native";
-import MapView, { Marker, Region } from "react-native-maps";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useApp } from "@/context/AppContext";
-import { Court, INITIAL_REGION } from "@/data/courts";
+import { Court } from "@/data/courts";
 import Colors from "@/constants/colors";
 
-// Hard cap — native pins are fast but keep it reasonable
-const MAX_MARKERS = 40;
-const ZOOM_THRESHOLD = 8;
-
-function LiveDot() {
-  const pulse = useRef(new Animated.Value(1)).current;
-  useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, { toValue: 1.6, duration: 900, useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 1, duration: 900, useNativeDriver: true }),
-      ])
-    ).start();
-  }, []);
-  return (
-    <View style={styles.liveContainer}>
-      <Animated.View style={[styles.livePulse, { transform: [{ scale: pulse }] }]} />
-      <View style={styles.liveDot} />
-      <Text style={styles.liveText}>LIVE</Text>
-    </View>
-  );
+function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// Pure native pin — no custom children, no JS bridge rendering per marker.
-// pinColor drives colour; the OS renders the pin entirely natively.
-function CourtMarker({
+function openDirections(court: Court) {
+  const label = encodeURIComponent(court.name);
+  const { latitude, longitude } = court;
+  const url =
+    Platform.OS === "ios"
+      ? `maps://?q=${label}&ll=${latitude},${longitude}`
+      : `geo:${latitude},${longitude}?q=${label}`;
+  Linking.openURL(url).catch(() => {
+    Linking.openURL(
+      `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
+    );
+  });
+}
+
+function NearbyCard({
   court,
   count,
-  onPress,
+  distanceMiles,
 }: {
   court: Court;
   count: number;
-  onPress: () => void;
+  distanceMiles: number | null;
 }) {
   const isFull = count >= court.maxPlayers;
-  const hasPlayers = count > 0;
-  const pinColor = isFull ? "#EF4444" : hasPlayers ? "#22C55E" : "#6366F1";
+  const isEmpty = count === 0;
+  const statusColor = isFull ? Colors.red : isEmpty ? Colors.textTertiary : Colors.green;
+  const statusLabel = isFull ? "Full" : isEmpty ? "Empty" : "Active";
 
   return (
-    <Marker
-      coordinate={{ latitude: court.latitude, longitude: court.longitude }}
-      pinColor={pinColor}
-      onPress={onPress}
-      tracksViewChanges={false}
-    />
-  );
-}
-
-const darkMapStyle = [
-  { elementType: "geometry", stylers: [{ color: "#0f0f1a" }] },
-  { elementType: "labels.text.stroke", stylers: [{ color: "#0f0f1a" }] },
-  { elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
-  { featureType: "road", elementType: "geometry", stylers: [{ color: "#1a1a2e" }] },
-  { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#9ca5b3" }] },
-  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#1e2030" }] },
-  { featureType: "water", elementType: "geometry", stylers: [{ color: "#0d0d1a" }] },
-  { featureType: "poi", elementType: "geometry", stylers: [{ color: "#1a1a2e" }] },
-  { featureType: "poi.park", elementType: "geometry", stylers: [{ color: "#111120" }] },
-  { featureType: "transit", stylers: [{ color: "#2f3948" }] },
-  { featureType: "administrative", elementType: "geometry", stylers: [{ color: "#1a1a2e" }] },
-];
-
-export default function CourtMap() {
-  const insets = useSafeAreaInsets();
-  const { allCourts, playerCounts, courtFilter, setCourtFilter, userLocation } = useApp();
-  const [selectedCourt, setSelectedCourt] = useState<Court | null>(null);
-  const [region, setRegion] = useState<Region | null>(null);
-
-  // 400ms debounce so markers only update after the user stops panning
-  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const handleRegionChange = useCallback((r: Region) => {
-    if (debounceTimer.current) clearTimeout(debounceTimer.current);
-    debounceTimer.current = setTimeout(() => setRegion(r), 400);
-  }, []);
-
-  const visibleCourts = useMemo(() => {
-    if (!region) return [];
-    const { latitude, longitude, latitudeDelta, longitudeDelta } = region;
-    if (latitudeDelta > ZOOM_THRESHOLD) return [];
-
-    const pad = 0.05; // small buffer so markers don't pop in at the edge
-    const minLat = latitude - latitudeDelta / 2 - pad;
-    const maxLat = latitude + latitudeDelta / 2 + pad;
-    const minLon = longitude - longitudeDelta / 2 - pad;
-    const maxLon = longitude + longitudeDelta / 2 + pad;
-
-    const inView = allCourts.filter((c) => {
-      if (courtFilter !== "all" && c.type !== courtFilter) return false;
-      return (
-        c.latitude >= minLat &&
-        c.latitude <= maxLat &&
-        c.longitude >= minLon &&
-        c.longitude <= maxLon
-      );
-    });
-
-    // Active courts first
-    const active = inView.filter((c) => (playerCounts[c.id] ?? 0) > 0);
-    const inactive = inView.filter((c) => (playerCounts[c.id] ?? 0) === 0);
-    return [...active, ...inactive].slice(0, MAX_MARKERS);
-  }, [region, allCourts, courtFilter, playerCounts]);
-
-  const tooZoomedOut = region ? region.latitudeDelta > ZOOM_THRESHOLD : true;
-
-  const initialRegion = userLocation
-    ? {
-        latitude: userLocation.latitude,
-        longitude: userLocation.longitude,
-        latitudeDelta: 0.3,
-        longitudeDelta: 0.3,
-      }
-    : INITIAL_REGION;
-
-  return (
-    <View style={styles.container}>
-      <MapView
-        style={StyleSheet.absoluteFill}
-        initialRegion={initialRegion}
-        customMapStyle={darkMapStyle}
-        showsUserLocation
-        showsMyLocationButton={false}
-        onRegionChangeComplete={handleRegionChange}
-      >
-        {visibleCourts.map((court) => (
-          <CourtMarker
-            key={court.id}
-            court={court}
-            count={playerCounts[court.id] ?? 0}
-            onPress={() => setSelectedCourt(court)}
-          />
-        ))}
-      </MapView>
-
-      {/* Top bar */}
-      <View style={[styles.topBar, { top: insets.top + 12 }]}>
-        <View style={styles.topBarInner}>
-          <Text style={styles.topTitle}>HoopQueue</Text>
-          <LiveDot />
+    <TouchableOpacity
+      style={styles.card}
+      activeOpacity={0.75}
+      onPress={() => router.push({ pathname: "/court/[id]", params: { id: court.id } })}
+    >
+      {/* Header row */}
+      <View style={styles.cardHeader}>
+        <View style={{ flex: 1, marginRight: 10 }}>
+          <Text style={styles.cardName} numberOfLines={1}>{court.shortName}</Text>
+          <Text style={styles.cardCity}>{court.city}, {court.stateAbbr}</Text>
         </View>
-        <View style={styles.filterRow}>
-          {(["all", "outdoor", "indoor"] as const).map((f) => (
-            <TouchableOpacity
-              key={f}
-              style={[styles.filterBtn, courtFilter === f && styles.filterBtnActive]}
-              onPress={() => setCourtFilter(f)}
-            >
-              <Text style={[styles.filterText, courtFilter === f && styles.filterTextActive]}>
-                {f === "all" ? "All" : f.charAt(0).toUpperCase() + f.slice(1)}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-        {/* Legend */}
-        <View style={styles.legend}>
-          <View style={styles.legendItem}>
-            <View style={[styles.legendDot, { backgroundColor: "#22C55E" }]} />
-            <Text style={styles.legendText}>Active</Text>
-          </View>
-          <View style={styles.legendItem}>
-            <View style={[styles.legendDot, { backgroundColor: "#EF4444" }]} />
-            <Text style={styles.legendText}>Full</Text>
-          </View>
-          <View style={styles.legendItem}>
-            <View style={[styles.legendDot, { backgroundColor: "#6366F1" }]} />
-            <Text style={styles.legendText}>Empty</Text>
-          </View>
+        <View style={[styles.statusBadge, { backgroundColor: statusColor + "22" }]}>
+          <View style={[styles.badgeDot, { backgroundColor: statusColor }]} />
+          <Text style={[styles.badgeText, { color: statusColor }]}>{statusLabel}</Text>
         </View>
       </View>
 
-      {tooZoomedOut && (
-        <View style={[styles.zoomHint, { bottom: insets.bottom + 110 }]}>
-          <Ionicons name="search-outline" size={15} color={Colors.textSecondary} />
-          <Text style={styles.zoomHintText}>Zoom in to see courts</Text>
-        </View>
-      )}
-
-      {!tooZoomedOut && visibleCourts.length > 0 && (
-        <View style={[styles.countBadge, { bottom: insets.bottom + 110 }]}>
-          <Text style={styles.countBadgeText}>
-            {visibleCourts.length} court{visibleCourts.length !== 1 ? "s" : ""} in view
+      {/* Stats row */}
+      <View style={styles.statsRow}>
+        <View style={styles.statItem}>
+          <Ionicons
+            name={court.type === "indoor" ? "business-outline" : "partly-sunny-outline"}
+            size={13}
+            color={Colors.textSecondary}
+          />
+          <Text style={styles.statText}>
+            {court.type === "indoor" ? "Indoor" : "Outdoor"}
           </Text>
         </View>
-      )}
-
-      {/* Court detail card */}
-      {selectedCourt && (
-        <View style={[styles.bottomCard, { bottom: insets.bottom + 90 }]}>
-          <Pressable onPress={() => setSelectedCourt(null)} style={styles.dismissBtn}>
-            <Ionicons name="close" size={18} color={Colors.textSecondary} />
-          </Pressable>
-
-          <Text style={styles.bottomCardName}>{selectedCourt.shortName}</Text>
-          <Text style={styles.bottomCardAddress}>
-            {selectedCourt.city}, {selectedCourt.stateAbbr}
-          </Text>
-
-          <View style={styles.bottomCardStats}>
-            <View style={styles.statPill}>
-              <View
-                style={[
-                  styles.statDot,
-                  {
-                    backgroundColor:
-                      (playerCounts[selectedCourt.id] ?? 0) >= selectedCourt.maxPlayers
-                        ? Colors.red
-                        : (playerCounts[selectedCourt.id] ?? 0) > 0
-                        ? Colors.green
-                        : Colors.textTertiary,
-                  },
-                ]}
-              />
-              <Text style={styles.statText}>
-                {playerCounts[selectedCourt.id] ?? 0}/{selectedCourt.maxPlayers} playing
-              </Text>
-            </View>
-            <View style={styles.statPill}>
-              <Ionicons
-                name={selectedCourt.type === "indoor" ? "business-outline" : "partly-sunny-outline"}
-                size={13}
-                color={Colors.textSecondary}
-              />
-              <Text style={styles.statText}>
-                {selectedCourt.type === "indoor" ? "Indoor" : "Outdoor"}
-              </Text>
-            </View>
+        <View style={styles.statItem}>
+          <Ionicons name="basketball-outline" size={13} color={Colors.textSecondary} />
+          <Text style={styles.statText}>{count}/{court.maxPlayers} playing</Text>
+        </View>
+        {distanceMiles !== null && (
+          <View style={styles.statItem}>
+            <Ionicons name="navigate-outline" size={13} color={Colors.accent} />
+            <Text style={[styles.statText, { color: Colors.accent }]}>
+              {distanceMiles < 0.1 ? "Nearby" : `${distanceMiles.toFixed(1)} mi`}
+            </Text>
           </View>
+        )}
+      </View>
 
-          <TouchableOpacity
-            style={styles.viewBtn}
-            onPress={() =>
-              router.push({ pathname: "/court/[id]", params: { id: selectedCourt.id } })
-            }
-          >
-            <Text style={styles.viewBtnText}>View Court</Text>
-            <Ionicons name="arrow-forward" size={15} color={Colors.background} />
-          </TouchableOpacity>
+      {/* Action row */}
+      <View style={styles.actionRow}>
+        <TouchableOpacity
+          style={styles.directionsBtn}
+          onPress={(e) => { e.stopPropagation(); openDirections(court); }}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons name="navigate" size={14} color={Colors.accent} />
+          <Text style={styles.directionsBtnText}>Directions</Text>
+        </TouchableOpacity>
+        <View style={styles.progressBarWrap}>
+          <View
+            style={[
+              styles.progressFill,
+              {
+                width: `${Math.round((count / court.maxPlayers) * 100)}%` as any,
+                backgroundColor: statusColor,
+              },
+            ]}
+          />
         </View>
-      )}
+        <Ionicons name="chevron-forward" size={16} color={Colors.textTertiary} />
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+export default function NearbyScreen() {
+  const insets = useSafeAreaInsets();
+  const {
+    allCourts,
+    playerCounts,
+    courtFilter,
+    setCourtFilter,
+    userLocation,
+    getDistanceMiles,
+    refetchCourts,
+  } = useApp();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await refetchCourts();
+    setRefreshing(false);
+  }, [refetchCourts]);
+
+  const nearbyCourts = useMemo(() => {
+    let filtered = allCourts.filter(
+      (c) => courtFilter === "all" || c.type === courtFilter
+    );
+
+    if (userLocation) {
+      filtered = filtered
+        .slice()
+        .sort((a, b) => {
+          const da = getDistanceKm(userLocation.latitude, userLocation.longitude, a.latitude, a.longitude);
+          const db = getDistanceKm(userLocation.latitude, userLocation.longitude, b.latitude, b.longitude);
+          return da - db;
+        })
+        .slice(0, 100); // show closest 100
+    } else {
+      // No location — show active courts first
+      filtered = [
+        ...filtered.filter((c) => (playerCounts[c.id] ?? 0) > 0),
+        ...filtered.filter((c) => (playerCounts[c.id] ?? 0) === 0),
+      ].slice(0, 100);
+    }
+
+    return filtered;
+  }, [allCourts, courtFilter, userLocation, playerCounts]);
+
+  const activeCourts = nearbyCourts.filter((c) => (playerCounts[c.id] ?? 0) > 0).length;
+
+  const renderItem = useCallback(
+    ({ item }: { item: Court }) => (
+      <NearbyCard
+        court={item}
+        count={playerCounts[item.id] ?? 0}
+        distanceMiles={getDistanceMiles(item)}
+      />
+    ),
+    [playerCounts, getDistanceMiles]
+  );
+
+  return (
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      {/* Header */}
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.headerTitle}>Nearby</Text>
+          <Text style={styles.headerSub}>
+            {userLocation ? "Sorted by distance" : "Allow location for nearby courts"} ·{" "}
+            {activeCourts} active
+          </Text>
+        </View>
+        <View style={[styles.liveBadge]}>
+          <View style={styles.liveDot} />
+          <Text style={styles.liveText}>LIVE</Text>
+        </View>
+      </View>
+
+      {/* Filter pills */}
+      <View style={styles.filterRow}>
+        {(["all", "outdoor", "indoor"] as const).map((f) => (
+          <TouchableOpacity
+            key={f}
+            style={[styles.filterBtn, courtFilter === f && styles.filterBtnActive]}
+            onPress={() => setCourtFilter(f)}
+          >
+            <Text style={[styles.filterText, courtFilter === f && styles.filterTextActive]}>
+              {f === "all" ? "All" : f.charAt(0).toUpperCase() + f.slice(1)}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      <FlatList
+        data={nearbyCourts}
+        keyExtractor={(item) => item.id}
+        renderItem={renderItem}
+        contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 100 }]}
+        showsVerticalScrollIndicator={false}
+        initialNumToRender={12}
+        maxToRenderPerBatch={15}
+        windowSize={8}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={Colors.accent}
+          />
+        }
+        ListEmptyComponent={
+          <View style={styles.empty}>
+            <Ionicons name="basketball-outline" size={48} color={Colors.textTertiary} />
+            <Text style={styles.emptyText}>No courts found</Text>
+          </View>
+        }
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  topBar: {
-    position: "absolute",
-    left: 16,
-    right: 16,
-    backgroundColor: "rgba(10,10,15,0.92)",
-    borderRadius: 16,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  topBarInner: {
+  header: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 10,
+    alignItems: "flex-start",
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 8,
   },
-  topTitle: {
+  headerTitle: {
     fontFamily: "Inter_700Bold",
-    fontSize: 22,
-    color: Colors.accent,
+    fontSize: 30,
+    color: Colors.text,
     letterSpacing: -0.5,
   },
-  liveContainer: { flexDirection: "row", alignItems: "center", gap: 5 },
-  livePulse: {
-    position: "absolute",
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: Colors.green,
-    opacity: 0.4,
+  headerSub: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 13,
+    color: Colors.textSecondary,
+    marginTop: 2,
   },
-  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.green },
+  liveBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: Colors.greenDim,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    marginTop: 6,
+  },
+  liveDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: Colors.green,
+  },
   liveText: {
     fontFamily: "Inter_700Bold",
     fontSize: 11,
     color: Colors.green,
     letterSpacing: 1,
   },
-  filterRow: { flexDirection: "row", gap: 8, marginBottom: 10 },
+  filterRow: {
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: 20,
+    paddingBottom: 12,
+  },
   filterBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 7,
     borderRadius: 20,
     backgroundColor: Colors.surface,
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  filterBtnActive: { backgroundColor: Colors.accent, borderColor: Colors.accent },
+  filterBtnActive: {
+    backgroundColor: Colors.accent,
+    borderColor: Colors.accent,
+  },
   filterText: {
     fontFamily: "Inter_500Medium",
-    fontSize: 12,
+    fontSize: 13,
     color: Colors.textSecondary,
   },
-  filterTextActive: { color: Colors.background, fontFamily: "Inter_600SemiBold" },
-  legend: {
+  filterTextActive: {
+    color: Colors.background,
+    fontFamily: "Inter_600SemiBold",
+  },
+  list: {
+    paddingHorizontal: 16,
+  },
+  card: {
+    backgroundColor: Colors.card,
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginBottom: 10,
+  },
+  cardHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 10,
+  },
+  cardName: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 16,
+    color: Colors.text,
+    marginBottom: 2,
+  },
+  cardCity: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 12,
+    color: Colors.accent,
+  },
+  statusBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+  },
+  badgeDot: { width: 6, height: 6, borderRadius: 3 },
+  badgeText: { fontFamily: "Inter_600SemiBold", fontSize: 12 },
+  statsRow: {
     flexDirection: "row",
     gap: 14,
+    marginBottom: 12,
+    flexWrap: "wrap",
   },
-  legendItem: {
+  statItem: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
+    gap: 4,
   },
-  legendDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  legendText: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 11,
-    color: Colors.textSecondary,
-  },
-  zoomHint: {
-    position: "absolute",
-    alignSelf: "center",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "rgba(10,10,15,0.88)",
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  zoomHintText: {
-    fontFamily: "Inter_500Medium",
-    fontSize: 13,
-    color: Colors.textSecondary,
-  },
-  countBadge: {
-    position: "absolute",
-    alignSelf: "center",
-    backgroundColor: "rgba(10,10,15,0.88)",
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  countBadgeText: {
-    fontFamily: "Inter_500Medium",
-    fontSize: 13,
-    color: Colors.textSecondary,
-  },
-  bottomCard: {
-    position: "absolute",
-    left: 16,
-    right: 16,
-    backgroundColor: Colors.card,
-    borderRadius: 20,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  dismissBtn: { position: "absolute", top: 14, right: 14, padding: 4 },
-  bottomCardName: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 20,
-    color: Colors.text,
-    marginBottom: 4,
-  },
-  bottomCardAddress: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 13,
-    color: Colors.textSecondary,
-    marginBottom: 14,
-  },
-  bottomCardStats: { flexDirection: "row", gap: 10, marginBottom: 16 },
-  statPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    backgroundColor: Colors.surface,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 20,
-  },
-  statDot: { width: 7, height: 7, borderRadius: 3.5 },
   statText: {
-    fontFamily: "Inter_500Medium",
+    fontFamily: "Inter_400Regular",
     fontSize: 12,
     color: Colors.textSecondary,
   },
-  viewBtn: {
-    backgroundColor: Colors.accent,
-    borderRadius: 12,
-    paddingVertical: 13,
+  actionRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
+    gap: 10,
   },
-  viewBtnText: {
+  directionsBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: Colors.accent + "18",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: Colors.accent + "44",
+  },
+  directionsBtnText: {
     fontFamily: "Inter_600SemiBold",
-    fontSize: 15,
-    color: Colors.background,
+    fontSize: 12,
+    color: Colors.accent,
+  },
+  progressBarWrap: {
+    flex: 1,
+    height: 4,
+    backgroundColor: Colors.surface,
+    borderRadius: 2,
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: "100%",
+    borderRadius: 2,
+  },
+  empty: {
+    alignItems: "center",
+    paddingTop: 80,
+    gap: 10,
+  },
+  emptyText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 16,
+    color: Colors.textSecondary,
   },
 });
