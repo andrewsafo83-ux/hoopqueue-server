@@ -313,9 +313,10 @@ async function registerRoutes(app2) {
         )
       `);
       await pool.query(`ALTER TABLE courts ADD COLUMN IF NOT EXISTS state_abbr VARCHAR(10) DEFAULT ''`);
-      const caCountResult = await pool.query("SELECT COUNT(*) AS n FROM courts WHERE state_abbr = 'CA'");
-      if (parseInt(caCountResult.rows[0].n) === 0) {
-        console.log("No California courts found \u2014 inserting CA courts...");
+      const caRealCheck = await pool.query("SELECT 1 FROM courts WHERE id = 'venice-beach' LIMIT 1");
+      if (caRealCheck.rows.length === 0) {
+        console.log("Real California courts missing \u2014 replacing with 169 real courts...");
+        await pool.query("DELETE FROM courts WHERE state_abbr = 'CA'");
         const caChunkSize = 50;
         const caCourts = CA_COURTS.map((c) => ({ ...c, type: c.type, surface: c.surface }));
         for (let i = 0; i < caCourts.length; i += caChunkSize) {
@@ -331,7 +332,7 @@ async function registerRoutes(app2) {
             values
           );
         }
-        console.log(`\u2713 Inserted ${caCourts.length} California courts`);
+        console.log(`\u2713 Replaced with ${caCourts.length} real California courts`);
       }
       const countResult = await pool.query("SELECT COUNT(*) AS n FROM courts");
       if (parseInt(countResult.rows[0].n) > 0) return;
