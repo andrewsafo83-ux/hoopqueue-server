@@ -118,6 +118,7 @@ function CityPicker({
   onClose: () => void;
 }) {
   const insets = useSafeAreaInsets();
+  const { availableCities } = useApp();
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.modalOverlay} onPress={onClose}>
