@@ -109,7 +109,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ── Users ──────────────────────────────────────────────────────────────────
 
   app.post("/api/users", async (req: Request, res: Response) => {
-    const { userId, username, email, skillLevel } = req.body;
+    const { userId, username, email, phone, skillLevel } = req.body;
     if (!userId || !username || !email) {
       return res.status(400).json({ message: "userId, username, and email are required" });
     }
@@ -117,15 +117,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!emailRegex.test(email)) {
       return res.status(400).json({ message: "Invalid email address" });
     }
+    if (phone) {
+      const digits = phone.replace(/\D/g, "");
+      if (digits.length < 10 || digits.length > 15) {
+        return res.status(400).json({ message: "Please enter a valid phone number." });
+      }
+    }
     try {
       const result = await pool.query(
-        `INSERT INTO users (user_id, username, email, skill_level, updated_at)
-         VALUES ($1, $2, $3, $4, NOW())
+        `INSERT INTO users (user_id, username, email, phone, skill_level, updated_at)
+         VALUES ($1, $2, $3, $4, $5, NOW())
          ON CONFLICT (user_id)
          DO UPDATE SET username = EXCLUDED.username, email = EXCLUDED.email,
-           skill_level = EXCLUDED.skill_level, updated_at = NOW()
-         RETURNING *`,
-        [userId, username.trim(), email.trim().toLowerCase(), skillLevel ?? "Intermediate"]
+           phone = EXCLUDED.phone, skill_level = EXCLUDED.skill_level, updated_at = NOW()
+         RETURNING user_id, username, skill_level`,
+        [userId, username.trim(), email.trim().toLowerCase(), phone?.trim() || null, skillLevel ?? "Intermediate"]
       );
       res.status(200).json(result.rows[0]);
     } catch (err: any) {
@@ -165,7 +171,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/users/:userId", async (req: Request, res: Response) => {
     const { userId } = req.params;
     try {
-      const result = await pool.query("SELECT * FROM users WHERE user_id = $1", [userId]);
+      const result = await pool.query(
+        "SELECT user_id, username, skill_level, created_at FROM users WHERE user_id = $1",
+        [userId]
+      );
+      if (result.rows.length === 0) return res.status(404).json({ message: "User not found" });
+      res.json(result.rows[0]);
+    } catch (err) {
+      console.error("User fetch error:", err);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.get("/api/users/:userId/private", async (req: Request, res: Response) => {
+    const { userId } = req.params;
+    const { requesterId } = req.query;
+    if (!requesterId || requesterId !== userId) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+    try {
+      const result = await pool.query(
+        "SELECT user_id, username, email, phone, skill_level, created_at FROM users WHERE user_id = $1",
+        [userId]
+      );
       if (result.rows.length === 0) return res.status(404).json({ message: "User not found" });
       res.json(result.rows[0]);
     } catch (err) {

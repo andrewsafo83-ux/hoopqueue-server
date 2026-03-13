@@ -46,20 +46,23 @@ export default function ProfileScreen() {
   const { profile, updateProfile, waitlists } = useApp();
   const [username, setUsername] = useState(profile?.username ?? "");
   const [email, setEmail] = useState(profile?.email ?? "");
+  const [phone, setPhone] = useState(profile?.phone ?? "");
   const [skillLevel, setSkillLevel] = useState<SkillLevel>(
     profile?.skillLevel ?? "Intermediate"
   );
   const [saved, setSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [emailError, setEmailError] = useState("");
+  const [phoneError, setPhoneError] = useState("");
 
   useEffect(() => {
     if (profile) {
       setUsername(profile.username);
       setEmail(profile.email ?? "");
+      setPhone(profile.phone ?? "");
       setSkillLevel(profile.skillLevel);
     }
-  }, [profile?.username, profile?.email, profile?.skillLevel]);
+  }, [profile?.username, profile?.email, profile?.phone, profile?.skillLevel]);
 
   const myWaitlists = Object.values(waitlists).filter((list) =>
     list.some((e) => e.userId === profile?.userId)
@@ -67,6 +70,13 @@ export default function ProfileScreen() {
 
   function validateEmail(val: string): boolean {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val.trim());
+  }
+
+  function formatPhone(val: string): string {
+    const digits = val.replace(/\D/g, "").slice(0, 10);
+    if (digits.length <= 3) return digits;
+    if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
+    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
   }
 
   async function handleSave() {
@@ -82,13 +92,21 @@ export default function ProfileScreen() {
       setEmailError("Please enter a valid email address");
       return;
     }
+    if (phone.trim()) {
+      const digits = phone.replace(/\D/g, "");
+      if (digits.length !== 10) {
+        setPhoneError("Please enter a valid 10-digit phone number");
+        return;
+      }
+    }
     setEmailError("");
+    setPhoneError("");
     setIsSaving(true);
     if (Platform.OS !== "web") {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
     try {
-      await updateProfile(username.trim(), email.trim().toLowerCase(), skillLevel);
+      await updateProfile(username.trim(), email.trim().toLowerCase(), phone.trim(), skillLevel);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (err: any) {
@@ -105,6 +123,7 @@ export default function ProfileScreen() {
   const hasChanges =
     username !== (profile?.username ?? "") ||
     email !== (profile?.email ?? "") ||
+    phone !== (profile?.phone ?? "") ||
     skillLevel !== (profile?.skillLevel ?? "Intermediate");
 
   return (
@@ -140,7 +159,7 @@ export default function ProfileScreen() {
           <Ionicons name="person-circle-outline" size={48} color={Colors.accent} />
           <Text style={styles.welcomeTitle}>Create your player profile</Text>
           <Text style={styles.welcomeSub}>
-            Set your name, email, and skill level to join waitlists and post in the live feed
+            Set your name, email, phone, and skill level to join waitlists and post in the live feed
           </Text>
         </View>
       )}
@@ -167,7 +186,13 @@ export default function ProfileScreen() {
       )}
 
       <View style={styles.section}>
-        <Text style={styles.sectionLabel}>Player Name</Text>
+        <View style={styles.labelRow}>
+          <Text style={styles.sectionLabel}>Player Name</Text>
+          <View style={styles.publicBadge}>
+            <Ionicons name="eye-outline" size={11} color={Colors.accent} />
+            <Text style={styles.publicBadgeText}>Public</Text>
+          </View>
+        </View>
         <TextInput
           style={styles.input}
           value={username}
@@ -179,10 +204,17 @@ export default function ProfileScreen() {
           autoCorrect={false}
           autoCapitalize="words"
         />
+        <Text style={styles.fieldHint}>Visible to other players on waitlists and the live feed</Text>
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionLabel}>Email Address</Text>
+        <View style={styles.labelRow}>
+          <Text style={styles.sectionLabel}>Email Address</Text>
+          <View style={styles.privateBadge}>
+            <Ionicons name="lock-closed-outline" size={11} color={Colors.textSecondary} />
+            <Text style={styles.privateBadgeText}>Private</Text>
+          </View>
+        </View>
         <TextInput
           style={[styles.input, emailError ? styles.inputError : null]}
           value={email}
@@ -193,7 +225,7 @@ export default function ProfileScreen() {
           placeholder="your@email.com"
           placeholderTextColor={Colors.textTertiary}
           maxLength={100}
-          returnKeyType="done"
+          returnKeyType="next"
           autoCorrect={false}
           autoCapitalize="none"
           keyboardType="email-address"
@@ -204,7 +236,40 @@ export default function ProfileScreen() {
             <Text style={styles.errorText}>{emailError}</Text>
           </View>
         ) : (
-          <Text style={styles.fieldHint}>Used to save your spot and send updates</Text>
+          <Text style={styles.fieldHint}>Only visible to you — never shared with other players</Text>
+        )}
+      </View>
+
+      <View style={styles.section}>
+        <View style={styles.labelRow}>
+          <Text style={styles.sectionLabel}>Phone Number</Text>
+          <View style={styles.privateBadge}>
+            <Ionicons name="lock-closed-outline" size={11} color={Colors.textSecondary} />
+            <Text style={styles.privateBadgeText}>Private</Text>
+          </View>
+        </View>
+        <TextInput
+          style={[styles.input, phoneError ? styles.inputError : null]}
+          value={phone}
+          onChangeText={(t) => {
+            setPhone(formatPhone(t));
+            if (phoneError) setPhoneError("");
+          }}
+          placeholder="(555) 000-0000"
+          placeholderTextColor={Colors.textTertiary}
+          maxLength={14}
+          returnKeyType="done"
+          autoCorrect={false}
+          autoCapitalize="none"
+          keyboardType="phone-pad"
+        />
+        {phoneError ? (
+          <View style={styles.errorRow}>
+            <Ionicons name="alert-circle-outline" size={13} color={Colors.red} />
+            <Text style={styles.errorText}>{phoneError}</Text>
+          </View>
+        ) : (
+          <Text style={styles.fieldHint}>Optional — only visible to you, never shared</Text>
         )}
       </View>
 
@@ -381,13 +446,46 @@ const styles = StyleSheet.create({
   statValue: { fontFamily: "Inter_700Bold", fontSize: 22, color: Colors.text },
   statKey: { fontFamily: "Inter_400Regular", fontSize: 12, color: Colors.textSecondary },
   section: { marginBottom: 24 },
+  labelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
   sectionLabel: {
     fontFamily: "Inter_600SemiBold",
     fontSize: 13,
     color: Colors.textSecondary,
     letterSpacing: 0.5,
     textTransform: "uppercase",
-    marginBottom: 10,
+  },
+  publicBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: Colors.accent + "18",
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  publicBadgeText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 11,
+    color: Colors.accent,
+  },
+  privateBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: Colors.border,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  privateBadgeText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 11,
+    color: Colors.textSecondary,
   },
   input: {
     backgroundColor: Colors.card,
