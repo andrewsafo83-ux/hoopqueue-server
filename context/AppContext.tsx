@@ -8,10 +8,25 @@ import React, {
   ReactNode,
 } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Location from "expo-location";
+import { Platform } from "react-native";
 import { Court, SkillLevel, CITIES } from "@/data/courts";
 import { apiRequest, getApiUrl } from "@/lib/query-client";
 
 export { Court, CITIES };
+
+function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 
 const STORAGE_KEYS = {
   PROFILE: "rnl_profile_v2",
@@ -36,6 +51,11 @@ export interface WaitlistEntry {
   position: number;
 }
 
+interface UserLocation {
+  latitude: number;
+  longitude: number;
+}
+
 interface AppContextValue {
   profile: UserProfile | null;
   courts: Court[];
@@ -43,11 +63,13 @@ interface AppContextValue {
   waitlists: Record<string, WaitlistEntry[]>;
   playerCounts: Record<string, number>;
   isLoaded: boolean;
+  userLocation: UserLocation | null;
   updateProfile: (username: string, email: string, skillLevel: SkillLevel) => Promise<void>;
   joinWaitlist: (courtId: string) => Promise<void>;
   leaveWaitlist: (courtId: string) => Promise<void>;
   isOnWaitlist: (courtId: string) => boolean;
   getMyPosition: (courtId: string) => number | null;
+  getDistanceMiles: (court: Court) => number | null;
   courtFilter: "all" | "indoor" | "outdoor";
   setCourtFilter: (f: "all" | "indoor" | "outdoor") => void;
   cityFilter: string;
@@ -89,6 +111,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [courtFilter, setCourtFilter] = useState<"all" | "indoor" | "outdoor">("all");
   const [cityFilter, setCityFilter] = useState<string>("All Cities");
   const [allCourts, setAllCourts] = useState<Court[]>([]);
+  const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
 
   useEffect(() => {
     async function loadData() {
@@ -129,6 +152,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     }
     loadData();
+  }, []);
+
+  // Request location permission and get coordinates
+  useEffect(() => {
+    async function fetchLocation() {
+      try {
+        if (Platform.OS === "web") {
+          navigator.geolocation?.getCurrentPosition(
+            (pos) => setUserLocation({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
+            () => {}
+          );
+          return;
+        }
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== "granted") return;
+        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        setUserLocation({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
+      } catch {}
+    }
+    fetchLocation();
   }, []);
 
   // Simulate activity
@@ -208,13 +251,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return entry?.position ?? null;
   }, [profile, waitlists]);
 
+  const getDistanceMiles = useCallback((court: Court): number | null => {
+    if (!userLocation) return null;
+    const km = getDistanceKm(userLocation.latitude, userLocation.longitude, court.latitude, court.longitude);
+    return km * 0.621371;
+  }, [userLocation]);
+
   const courts = useMemo(() => {
-    return allCourts.filter((c) => {
+    const filtered = allCourts.filter((c) => {
       const typeMatch = courtFilter === "all" || c.type === courtFilter;
       const cityMatch = cityFilter === "All Cities" || c.city === cityFilter;
       return typeMatch && cityMatch;
     });
-  }, [allCourts, courtFilter, cityFilter]);
+    if (userLocation) {
+      return filtered.slice().sort((a, b) => {
+        const da = getDistanceKm(userLocation.latitude, userLocation.longitude, a.latitude, a.longitude);
+        const db = getDistanceKm(userLocation.latitude, userLocation.longitude, b.latitude, b.longitude);
+        return da - db;
+      });
+    }
+    return filtered;
+  }, [allCourts, courtFilter, cityFilter, userLocation]);
 
   const availableCities = useMemo(() => {
     const cities = ["All Cities", ...Array.from(new Set(allCourts.map((c) => c.city))).sort()];
@@ -228,17 +285,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     waitlists,
     playerCounts,
     isLoaded,
+    userLocation,
     updateProfile,
     joinWaitlist,
     leaveWaitlist,
     isOnWaitlist,
     getMyPosition,
+    getDistanceMiles,
     courtFilter,
     setCourtFilter,
     cityFilter,
     setCityFilter,
     availableCities,
-  }), [profile, courts, allCourts, waitlists, playerCounts, isLoaded, updateProfile, joinWaitlist, leaveWaitlist, isOnWaitlist, getMyPosition, courtFilter, setCourtFilter, cityFilter, setCityFilter, availableCities]);
+  }), [profile, courts, allCourts, waitlists, playerCounts, isLoaded, userLocation, updateProfile, joinWaitlist, leaveWaitlist, isOnWaitlist, getMyPosition, getDistanceMiles, courtFilter, setCourtFilter, cityFilter, setCityFilter, availableCities]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }

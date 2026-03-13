@@ -17,7 +17,7 @@ import { useApp } from "@/context/AppContext";
 import { Court } from "@/data/courts";
 import Colors from "@/constants/colors";
 
-function CourtCard({ court, count }: { court: Court; count: number }) {
+function CourtCard({ court, count, distanceMiles }: { court: Court; count: number; distanceMiles: number | null }) {
   const isFull = count >= court.maxPlayers;
   const isEmpty = count === 0;
   const statusColor = isFull ? Colors.red : isEmpty ? Colors.textTertiary : Colors.green;
@@ -72,6 +72,14 @@ function CourtCard({ court, count }: { court: Court; count: number }) {
             <Ionicons name="basketball-outline" size={13} color={Colors.textSecondary} />
             <Text style={styles.metaText}>{court.hoops} hoops</Text>
           </View>
+          {distanceMiles !== null && (
+            <View style={styles.metaItem}>
+              <Ionicons name="navigate-outline" size={13} color={Colors.accent} />
+              <Text style={[styles.metaText, { color: Colors.accent }]}>
+                {distanceMiles < 0.1 ? "Nearby" : `${distanceMiles.toFixed(1)} mi`}
+              </Text>
+            </View>
+          )}
         </View>
 
         <View style={styles.cardBottom}>
@@ -140,7 +148,7 @@ function CityPicker({
 
 export default function CourtsScreen() {
   const insets = useSafeAreaInsets();
-  const { courts, playerCounts, courtFilter, setCourtFilter, cityFilter, setCityFilter, availableCities } = useApp();
+  const { courts, playerCounts, courtFilter, setCourtFilter, cityFilter, setCityFilter, availableCities, getDistanceMiles } = useApp();
   const [showCityPicker, setShowCityPicker] = useState(false);
 
   const activeCourts = courts.filter((c) => (playerCounts[c.id] ?? 0) > 0).length;
@@ -204,7 +212,7 @@ export default function CourtsScreen() {
           </View>
         ) : (
           courts.map((court) => (
-            <CourtCard key={court.id} court={court} count={playerCounts[court.id] ?? 0} />
+            <CourtCard key={court.id} court={court} count={playerCounts[court.id] ?? 0} distanceMiles={getDistanceMiles(court)} />
           ))
         )}
       </ScrollView>
