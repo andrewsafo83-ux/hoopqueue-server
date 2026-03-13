@@ -241,7 +241,7 @@ export default function ProfileScreen() {
               setHandle(t.toLowerCase().replace(/[^a-z0-9_]/g, ""));
               if (handleError) setHandleError("");
             }}
-            placeholder="andrewsafo5"
+            placeholder="username"
             placeholderTextColor={Colors.textTertiary}
             maxLength={30}
             returnKeyType="next"
