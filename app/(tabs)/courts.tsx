@@ -5,7 +5,6 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,
   Animated,
   Platform,
   Pressable,
@@ -130,10 +129,15 @@ function StatePicker({
         <View style={[styles.pickerSheet, { paddingBottom: insets.bottom + 16 }]}>
           <View style={styles.pickerHandle} />
           <Text style={styles.pickerTitle}>Filter by State</Text>
-          <ScrollView showsVerticalScrollIndicator={false}>
-            {options.map((state) => (
+          <FlatList
+            data={options}
+            keyExtractor={(item) => item.abbr || "all"}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            initialNumToRender={20}
+            getItemLayout={(_, index) => ({ length: 51, offset: 51 * index, index })}
+            renderItem={({ item: state }) => (
               <TouchableOpacity
-                key={state.abbr || "all"}
                 style={[styles.pickerItem, selected === state.name && styles.pickerItemActive]}
                 onPress={() => { onSelect(state.name); onClose(); }}
               >
@@ -144,8 +148,8 @@ function StatePicker({
                   <Ionicons name="checkmark" size={18} color={Colors.accent} />
                 )}
               </TouchableOpacity>
-            ))}
-          </ScrollView>
+            )}
+          />
         </View>
       </Pressable>
     </Modal>
@@ -172,10 +176,15 @@ function CityPicker({
         <View style={[styles.pickerSheet, { paddingBottom: insets.bottom + 16 }]}>
           <View style={styles.pickerHandle} />
           <Text style={styles.pickerTitle}>Filter by City</Text>
-          <ScrollView showsVerticalScrollIndicator={false}>
-            {availableCities.map((city) => (
+          <FlatList
+            data={availableCities}
+            keyExtractor={(item) => item}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            initialNumToRender={20}
+            getItemLayout={(_, index) => ({ length: 51, offset: 51 * index, index })}
+            renderItem={({ item: city }) => (
               <TouchableOpacity
-                key={city}
                 style={[styles.pickerItem, selected === city && styles.pickerItemActive]}
                 onPress={() => { onSelect(city); onClose(); }}
               >
@@ -186,8 +195,8 @@ function CityPicker({
                   <Ionicons name="checkmark" size={18} color={Colors.accent} />
                 )}
               </TouchableOpacity>
-            ))}
-          </ScrollView>
+            )}
+          />
         </View>
       </Pressable>
     </Modal>
