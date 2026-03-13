@@ -1,3 +1,4 @@
+
 import React, { useRef, useState, useCallback } from "react";
 import {
   View,
@@ -10,6 +11,7 @@ import {
   Pressable,
   Modal,
   RefreshControl,
+  FlatList,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -45,7 +47,7 @@ function CourtCard({ court, count, distanceMiles }: { court: Court; count: numbe
           <View style={styles.cardTitleRow}>
             <View style={{ flex: 1, marginRight: 10 }}>
               <Text style={styles.cardName} numberOfLines={1}>{court.shortName}</Text>
-              <Text style={styles.cardCity}>{court.city}</Text>
+              <Text style={styles.cardCity}>{court.city}, {court.stateAbbr}</Text>
             </View>
             <View style={[styles.statusBadge, { backgroundColor: statusColor + "22" }]}>
               <View style={[styles.badgeDot, { backgroundColor: statusColor }]} />
@@ -107,19 +109,63 @@ function CourtCard({ court, count, distanceMiles }: { court: Court; count: numbe
   );
 }
 
+function StatePicker({
+  visible,
+  selected,
+  onSelect,
+  onClose,
+  availableStates,
+}: {
+  visible: boolean;
+  selected: string;
+  onSelect: (state: string) => void;
+  onClose: () => void;
+  availableStates: { name: string; abbr: string }[];
+}) {
+  const insets = useSafeAreaInsets();
+  const options = [{ name: "All States", abbr: "" }, ...availableStates];
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={styles.modalOverlay} onPress={onClose}>
+        <View style={[styles.pickerSheet, { paddingBottom: insets.bottom + 16 }]}>
+          <View style={styles.pickerHandle} />
+          <Text style={styles.pickerTitle}>Filter by State</Text>
+          <ScrollView showsVerticalScrollIndicator={false}>
+            {options.map((state) => (
+              <TouchableOpacity
+                key={state.abbr || "all"}
+                style={[styles.pickerItem, selected === state.name && styles.pickerItemActive]}
+                onPress={() => { onSelect(state.name); onClose(); }}
+              >
+                <Text style={[styles.pickerItemText, selected === state.name && styles.pickerItemTextActive]}>
+                  {state.name}
+                </Text>
+                {selected === state.name && (
+                  <Ionicons name="checkmark" size={18} color={Colors.accent} />
+                )}
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      </Pressable>
+    </Modal>
+  );
+}
+
 function CityPicker({
   visible,
   selected,
   onSelect,
   onClose,
+  availableCities,
 }: {
   visible: boolean;
   selected: string;
   onSelect: (city: string) => void;
   onClose: () => void;
+  availableCities: string[];
 }) {
   const insets = useSafeAreaInsets();
-  const { availableCities } = useApp();
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.modalOverlay} onPress={onClose}>
@@ -150,17 +196,35 @@ function CityPicker({
 
 export default function CourtsScreen() {
   const insets = useSafeAreaInsets();
-  const { courts, playerCounts, courtFilter, setCourtFilter, cityFilter, setCityFilter, availableCities, getDistanceMiles, refetchCourts } = useApp();
+  const {
+    courts, playerCounts, courtFilter, setCourtFilter,
+    cityFilter, setCityFilter, availableCities,
+    stateFilter, setStateFilter, availableStates,
+    getDistanceMiles, refetchCourts, allCourts,
+  } = useApp();
   const [refreshing, setRefreshing] = useState(false);
+  const [showStatePicker, setShowStatePicker] = useState(false);
+  const [showCityPicker, setShowCityPicker] = useState(false);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await refetchCourts();
     setRefreshing(false);
   }, [refetchCourts]);
-  const [showCityPicker, setShowCityPicker] = useState(false);
 
   const activeCourts = courts.filter((c) => (playerCounts[c.id] ?? 0) > 0).length;
+  const stateIsFiltered = stateFilter !== "All States";
+  const cityIsFiltered = cityFilter !== "All Cities";
+  const tooMany = courts.length > 200 && !stateIsFiltered;
+
+  const renderItem = useCallback(({ item }: { item: Court }) => (
+    <CourtCard
+      key={item.id}
+      court={item}
+      count={playerCounts[item.id] ?? 0}
+      distanceMiles={getDistanceMiles(item)}
+    />
+  ), [playerCounts, getDistanceMiles]);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + (Platform.OS === "web" ? 67 : 0) }]}>
@@ -168,7 +232,7 @@ export default function CourtsScreen() {
         <View>
           <Text style={styles.headerTitle}>Courts</Text>
           <Text style={styles.headerSub}>
-            {activeCourts} active · {courts.length} total
+            {stateIsFiltered ? `${stateFilter}` : "All States"} · {courts.length} courts · {activeCourts} active
           </Text>
         </View>
       </View>
@@ -187,53 +251,100 @@ export default function CourtsScreen() {
         ))}
 
         <TouchableOpacity
-          style={[styles.cityBtn, cityFilter !== "All Cities" && styles.cityBtnActive]}
-          onPress={() => setShowCityPicker(true)}
+          style={[styles.cityBtn, stateIsFiltered && styles.cityBtnActive]}
+          onPress={() => setShowStatePicker(true)}
         >
           <Ionicons
-            name="location-outline"
+            name="map-outline"
             size={13}
-            color={cityFilter !== "All Cities" ? Colors.background : Colors.textSecondary}
+            color={stateIsFiltered ? Colors.background : Colors.textSecondary}
           />
           <Text
-            style={[styles.filterText, cityFilter !== "All Cities" && styles.filterTextActive]}
+            style={[styles.filterText, stateIsFiltered && styles.filterTextActive]}
             numberOfLines={1}
           >
-            {cityFilter === "All Cities" ? "City" : cityFilter}
+            {stateIsFiltered ? stateFilter : "State"}
           </Text>
           <Ionicons
             name="chevron-down"
             size={12}
-            color={cityFilter !== "All Cities" ? Colors.background : Colors.textSecondary}
+            color={stateIsFiltered ? Colors.background : Colors.textSecondary}
           />
         </TouchableOpacity>
+
+        {stateIsFiltered && (
+          <TouchableOpacity
+            style={[styles.cityBtn, cityIsFiltered && styles.cityBtnActive]}
+            onPress={() => setShowCityPicker(true)}
+          >
+            <Ionicons
+              name="location-outline"
+              size={13}
+              color={cityIsFiltered ? Colors.background : Colors.textSecondary}
+            />
+            <Text
+              style={[styles.filterText, cityIsFiltered && styles.filterTextActive]}
+              numberOfLines={1}
+            >
+              {cityIsFiltered ? cityFilter : "City"}
+            </Text>
+            <Ionicons
+              name="chevron-down"
+              size={12}
+              color={cityIsFiltered ? Colors.background : Colors.textSecondary}
+            />
+          </TouchableOpacity>
+        )}
       </View>
 
-      <ScrollView
-        contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 100 }]}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.accent} />
-        }
-      >
-        {courts.length === 0 ? (
-          <View style={styles.empty}>
-            <Ionicons name="basketball-outline" size={48} color={Colors.textTertiary} />
-            <Text style={styles.emptyText}>No courts found</Text>
-            <Text style={styles.emptySub}>Try changing your filters</Text>
-          </View>
-        ) : (
-          courts.map((court) => (
-            <CourtCard key={court.id} court={court} count={playerCounts[court.id] ?? 0} distanceMiles={getDistanceMiles(court)} />
-          ))
-        )}
-      </ScrollView>
+      {tooMany ? (
+        <View style={styles.promptContainer}>
+          <Ionicons name="map-outline" size={52} color={Colors.accent} />
+          <Text style={styles.promptTitle}>Select a State</Text>
+          <Text style={styles.promptSub}>
+            There are {allCourts.length.toLocaleString()} courts across the US.{"\n"}
+            Pick a state above to browse courts near you.
+          </Text>
+          <TouchableOpacity style={styles.promptBtn} onPress={() => setShowStatePicker(true)}>
+            <Text style={styles.promptBtnText}>Choose State</Text>
+            <Ionicons name="chevron-down" size={14} color={Colors.background} />
+          </TouchableOpacity>
+        </View>
+      ) : courts.length === 0 ? (
+        <View style={styles.empty}>
+          <Ionicons name="basketball-outline" size={48} color={Colors.textTertiary} />
+          <Text style={styles.emptyText}>No courts found</Text>
+          <Text style={styles.emptySub}>Try changing your filters</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={courts}
+          keyExtractor={(item) => item.id}
+          renderItem={renderItem}
+          contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 100 }]}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.accent} />
+          }
+          initialNumToRender={15}
+          maxToRenderPerBatch={20}
+          windowSize={10}
+        />
+      )}
 
+      <StatePicker
+        visible={showStatePicker}
+        selected={stateFilter}
+        onSelect={(s) => { setStateFilter(s); setCityFilter("All Cities"); }}
+        onClose={() => setShowStatePicker(false)}
+        availableStates={availableStates}
+      />
       <CityPicker
         visible={showCityPicker}
         selected={cityFilter}
         onSelect={setCityFilter}
         onClose={() => setShowCityPicker(false)}
+        availableCities={availableCities}
       />
     </View>
   );
@@ -290,7 +401,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
     borderWidth: 1,
     borderColor: Colors.border,
-    maxWidth: 140,
+    maxWidth: 160,
   },
   cityBtnActive: {
     backgroundColor: Colors.accent,
@@ -419,6 +530,41 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     fontSize: 14,
     color: Colors.textTertiary,
+  },
+  promptContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 40,
+    gap: 14,
+  },
+  promptTitle: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 22,
+    color: Colors.text,
+    textAlign: "center",
+  },
+  promptSub: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 14,
+    color: Colors.textSecondary,
+    textAlign: "center",
+    lineHeight: 22,
+  },
+  promptBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: Colors.accent,
+    paddingHorizontal: 24,
+    paddingVertical: 13,
+    borderRadius: 14,
+    marginTop: 6,
+  },
+  promptBtnText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 15,
+    color: Colors.background,
   },
   modalOverlay: {
     flex: 1,

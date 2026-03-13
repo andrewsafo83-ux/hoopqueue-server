@@ -1,3 +1,4 @@
+
 import { isLiquidGlassAvailable } from "expo-glass-effect";
 import { Tabs } from "expo-router";
 import { NativeTabs, Icon, Label, Badge } from "expo-router/unstable-native-tabs";
@@ -38,6 +39,10 @@ function NativeTabLayout() {
       <NativeTabs.Trigger name="courts">
         <Icon sf={{ default: "sportscourt", selected: "sportscourt.fill" }} />
         <Label>Courts</Label>
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="states">
+        <Icon sf={{ default: "flag", selected: "flag.fill" }} />
+        <Label>States</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="messages">
         <Icon sf={{ default: "message", selected: "message.fill" }} />
@@ -98,6 +103,15 @@ function ClassicTabLayout() {
           title: "Courts",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="basketball" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="states"
+        options={{
+          title: "States",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="flag" size={size} color={color} />
           ),
         }}
       />

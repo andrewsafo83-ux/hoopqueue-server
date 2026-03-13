@@ -653,10 +653,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/courts", async (_req: Request, res: Response) => {
     try {
       const result = await pool.query(
-        `SELECT id, name, short_name AS "shortName", address, city, state, country,
+        `SELECT id, name, short_name AS "shortName", address, city, state,
+                COALESCE(state_abbr, '') AS "stateAbbr", country,
                 latitude, longitude, type, surface, hoops, description,
                 base_players_playing AS "basePlayersPlaying", max_players AS "maxPlayers"
-         FROM courts ORDER BY city, name`
+         FROM courts ORDER BY state, city, name`
       );
       res.set("Cache-Control", "no-store");
       res.json(result.rows);

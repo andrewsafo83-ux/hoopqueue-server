@@ -1,3 +1,4 @@
+
 import React, { useState } from "react";
 import {
   View,
@@ -12,7 +13,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useApp } from "@/context/AppContext";
-import { Court, CITIES } from "@/data/courts";
+import { Court } from "@/data/courts";
 import Colors from "@/constants/colors";
 
 function CourtCard({ court, count }: { court: Court; count: number }) {
@@ -29,7 +30,7 @@ function CourtCard({ court, count }: { court: Court; count: number }) {
         <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
         <View style={styles.cardInfo}>
           <Text style={styles.cardName} numberOfLines={1}>{court.shortName}</Text>
-          <Text style={styles.cardCity}>{court.city}</Text>
+          <Text style={styles.cardCity}>{court.city}, {court.stateAbbr}</Text>
         </View>
         <View style={styles.cardRight}>
           <Text style={styles.countNum}>{count}</Text>
@@ -52,16 +53,47 @@ function CourtCard({ court, count }: { court: Court; count: number }) {
   );
 }
 
-function CityPicker({
-  visible,
-  selected,
-  onSelect,
-  onClose,
+function StatePicker({
+  visible, selected, onSelect, onClose, availableStates,
 }: {
-  visible: boolean;
-  selected: string;
-  onSelect: (city: string) => void;
-  onClose: () => void;
+  visible: boolean; selected: string;
+  onSelect: (s: string) => void; onClose: () => void;
+  availableStates: { name: string; abbr: string }[];
+}) {
+  const insets = useSafeAreaInsets();
+  const options = [{ name: "All States", abbr: "" }, ...availableStates];
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={styles.modalOverlay} onPress={onClose}>
+        <View style={[styles.pickerSheet, { paddingBottom: insets.bottom + 34 }]}>
+          <View style={styles.pickerHandle} />
+          <Text style={styles.pickerTitle}>Filter by State</Text>
+          <ScrollView showsVerticalScrollIndicator={false}>
+            {options.map((s) => (
+              <TouchableOpacity
+                key={s.abbr || "all"}
+                style={styles.pickerItem}
+                onPress={() => { onSelect(s.name); onClose(); }}
+              >
+                <Text style={[styles.pickerItemText, selected === s.name && { color: Colors.accent }]}>
+                  {s.name}
+                </Text>
+                {selected === s.name && <Ionicons name="checkmark" size={18} color={Colors.accent} />}
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      </Pressable>
+    </Modal>
+  );
+}
+
+function CityPicker({
+  visible, selected, onSelect, onClose, availableCities,
+}: {
+  visible: boolean; selected: string;
+  onSelect: (c: string) => void; onClose: () => void;
+  availableCities: string[];
 }) {
   const insets = useSafeAreaInsets();
   return (
@@ -71,7 +103,7 @@ function CityPicker({
           <View style={styles.pickerHandle} />
           <Text style={styles.pickerTitle}>Filter by City</Text>
           <ScrollView showsVerticalScrollIndicator={false}>
-            {CITIES.map((city) => (
+            {availableCities.map((city) => (
               <TouchableOpacity
                 key={city}
                 style={styles.pickerItem}
@@ -80,9 +112,7 @@ function CityPicker({
                 <Text style={[styles.pickerItemText, selected === city && { color: Colors.accent }]}>
                   {city}
                 </Text>
-                {selected === city && (
-                  <Ionicons name="checkmark" size={18} color={Colors.accent} />
-                )}
+                {selected === city && <Ionicons name="checkmark" size={18} color={Colors.accent} />}
               </TouchableOpacity>
             ))}
           </ScrollView>
@@ -94,9 +124,18 @@ function CityPicker({
 
 export default function CourtMap() {
   const insets = useSafeAreaInsets();
-  const { courts, playerCounts, courtFilter, setCourtFilter, cityFilter, setCityFilter } = useApp();
+  const {
+    courts, playerCounts, courtFilter, setCourtFilter,
+    cityFilter, setCityFilter, availableCities,
+    stateFilter, setStateFilter, availableStates,
+    allCourts,
+  } = useApp();
+  const [showStatePicker, setShowStatePicker] = useState(false);
   const [showCityPicker, setShowCityPicker] = useState(false);
   const activeCourts = courts.filter((c) => (playerCounts[c.id] ?? 0) > 0).length;
+  const stateIsFiltered = stateFilter !== "All States";
+  const cityIsFiltered = cityFilter !== "All Cities";
+  const tooMany = courts.length > 200 && !stateIsFiltered;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + 67 }]}>
@@ -124,39 +163,72 @@ export default function CourtMap() {
           </TouchableOpacity>
         ))}
         <TouchableOpacity
-          style={[styles.cityBtn, cityFilter !== "All Cities" && styles.filterBtnActive]}
-          onPress={() => setShowCityPicker(true)}
+          style={[styles.cityBtn, stateIsFiltered && styles.filterBtnActive]}
+          onPress={() => setShowStatePicker(true)}
         >
-          <Ionicons name="location-outline" size={13} color={cityFilter !== "All Cities" ? Colors.background : Colors.textSecondary} />
-          <Text style={[styles.filterText, cityFilter !== "All Cities" && styles.filterTextActive]} numberOfLines={1}>
-            {cityFilter === "All Cities" ? "City" : cityFilter}
+          <Ionicons name="map-outline" size={13} color={stateIsFiltered ? Colors.background : Colors.textSecondary} />
+          <Text style={[styles.filterText, stateIsFiltered && styles.filterTextActive]} numberOfLines={1}>
+            {stateIsFiltered ? stateFilter : "State"}
           </Text>
-          <Ionicons name="chevron-down" size={12} color={cityFilter !== "All Cities" ? Colors.background : Colors.textSecondary} />
+          <Ionicons name="chevron-down" size={12} color={stateIsFiltered ? Colors.background : Colors.textSecondary} />
         </TouchableOpacity>
+        {stateIsFiltered && (
+          <TouchableOpacity
+            style={[styles.cityBtn, cityIsFiltered && styles.filterBtnActive]}
+            onPress={() => setShowCityPicker(true)}
+          >
+            <Ionicons name="location-outline" size={13} color={cityIsFiltered ? Colors.background : Colors.textSecondary} />
+            <Text style={[styles.filterText, cityIsFiltered && styles.filterTextActive]} numberOfLines={1}>
+              {cityIsFiltered ? cityFilter : "City"}
+            </Text>
+            <Ionicons name="chevron-down" size={12} color={cityIsFiltered ? Colors.background : Colors.textSecondary} />
+          </TouchableOpacity>
+        )}
       </View>
 
-      <ScrollView
-        contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 34 }]}
-        showsVerticalScrollIndicator={false}
-      >
-        {courts.length === 0 ? (
-          <View style={styles.empty}>
-            <Ionicons name="basketball-outline" size={40} color={Colors.textTertiary} />
-            <Text style={styles.emptyText}>No courts found</Text>
-            <Text style={styles.emptySub}>Try adjusting your filters</Text>
-          </View>
-        ) : (
-          courts.map((court) => (
-            <CourtCard key={court.id} court={court} count={playerCounts[court.id] ?? 0} />
-          ))
-        )}
-      </ScrollView>
+      {tooMany ? (
+        <View style={styles.promptContainer}>
+          <Ionicons name="map-outline" size={48} color={Colors.accent} />
+          <Text style={styles.promptTitle}>Select a State</Text>
+          <Text style={styles.promptSub}>
+            {allCourts.length.toLocaleString()} courts across the US.{"\n"}Pick a state to browse.
+          </Text>
+          <TouchableOpacity style={styles.promptBtn} onPress={() => setShowStatePicker(true)}>
+            <Text style={styles.promptBtnText}>Choose State</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <ScrollView
+          contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 34 }]}
+          showsVerticalScrollIndicator={false}
+        >
+          {courts.length === 0 ? (
+            <View style={styles.empty}>
+              <Ionicons name="basketball-outline" size={40} color={Colors.textTertiary} />
+              <Text style={styles.emptyText}>No courts found</Text>
+              <Text style={styles.emptySub}>Try adjusting your filters</Text>
+            </View>
+          ) : (
+            courts.map((court) => (
+              <CourtCard key={court.id} court={court} count={playerCounts[court.id] ?? 0} />
+            ))
+          )}
+        </ScrollView>
+      )}
 
+      <StatePicker
+        visible={showStatePicker}
+        selected={stateFilter}
+        onSelect={(s) => { setStateFilter(s); setCityFilter("All Cities"); }}
+        onClose={() => setShowStatePicker(false)}
+        availableStates={availableStates}
+      />
       <CityPicker
         visible={showCityPicker}
         selected={cityFilter}
         onSelect={setCityFilter}
         onClose={() => setShowCityPicker(false)}
+        availableCities={availableCities}
       />
     </View>
   );
@@ -217,7 +289,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
     borderWidth: 1,
     borderColor: Colors.border,
-    maxWidth: 140,
+    maxWidth: 160,
   },
   filterText: {
     fontFamily: "Inter_500Medium",
@@ -248,6 +320,22 @@ const styles = StyleSheet.create({
   empty: { alignItems: "center", paddingTop: 60, gap: 10 },
   emptyText: { fontFamily: "Inter_600SemiBold", fontSize: 16, color: Colors.textSecondary },
   emptySub: { fontFamily: "Inter_400Regular", fontSize: 13, color: Colors.textTertiary },
+  promptContainer: {
+    flex: 1, alignItems: "center", justifyContent: "center",
+    paddingHorizontal: 40, gap: 14,
+  },
+  promptTitle: {
+    fontFamily: "Inter_700Bold", fontSize: 20, color: Colors.text, textAlign: "center",
+  },
+  promptSub: {
+    fontFamily: "Inter_400Regular", fontSize: 14, color: Colors.textSecondary,
+    textAlign: "center", lineHeight: 22,
+  },
+  promptBtn: {
+    backgroundColor: Colors.accent, paddingHorizontal: 24,
+    paddingVertical: 12, borderRadius: 12, marginTop: 6,
+  },
+  promptBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: Colors.background },
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" },
   pickerSheet: {
     backgroundColor: Colors.card,

@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -7,14 +8,16 @@ import {
   Pressable,
   Animated,
 } from "react-native";
-import { useRef, useEffect } from "react";
-import MapView, { Marker } from "react-native-maps";
+import MapView, { Marker, Region } from "react-native-maps";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useApp } from "@/context/AppContext";
-import { Court, COURTS, INITIAL_REGION } from "@/data/courts";
+import { Court, INITIAL_REGION } from "@/data/courts";
 import Colors from "@/constants/colors";
+
+const MAX_MARKERS = 75;
+const ZOOM_THRESHOLD = 8; // latitudeDelta above which we hide markers
 
 function LiveDot() {
   const pulse = useRef(new Animated.Value(1)).current;
@@ -80,19 +83,59 @@ const darkMapStyle = [
 
 export default function CourtMap() {
   const insets = useSafeAreaInsets();
-  const { playerCounts, courtFilter, setCourtFilter } = useApp();
+  const { allCourts, playerCounts, courtFilter, setCourtFilter, userLocation } = useApp();
   const [selectedCourt, setSelectedCourt] = useState<Court | null>(null);
+  const [region, setRegion] = useState<Region | null>(null);
+
+  const visibleCourts = useMemo(() => {
+    if (!region) return [];
+    const { latitude, longitude, latitudeDelta, longitudeDelta } = region;
+
+    if (latitudeDelta > ZOOM_THRESHOLD) return [];
+
+    const minLat = latitude - latitudeDelta / 2;
+    const maxLat = latitude + latitudeDelta / 2;
+    const minLon = longitude - longitudeDelta / 2;
+    const maxLon = longitude + longitudeDelta / 2;
+
+    const inView = allCourts.filter((c) => {
+      if (courtFilter !== "all" && c.type !== courtFilter) return false;
+      return (
+        c.latitude >= minLat &&
+        c.latitude <= maxLat &&
+        c.longitude >= minLon &&
+        c.longitude <= maxLon
+      );
+    });
+
+    // Prioritise active courts, then cap
+    const active = inView.filter((c) => (playerCounts[c.id] ?? 0) > 0);
+    const inactive = inView.filter((c) => (playerCounts[c.id] ?? 0) === 0);
+    return [...active, ...inactive].slice(0, MAX_MARKERS);
+  }, [region, allCourts, courtFilter, playerCounts]);
+
+  const tooZoomedOut = region ? region.latitudeDelta > ZOOM_THRESHOLD : true;
+
+  const initialRegion = userLocation
+    ? {
+        latitude: userLocation.latitude,
+        longitude: userLocation.longitude,
+        latitudeDelta: 0.3,
+        longitudeDelta: 0.3,
+      }
+    : INITIAL_REGION;
 
   return (
     <View style={styles.container}>
       <MapView
         style={StyleSheet.absoluteFill}
-        initialRegion={INITIAL_REGION}
+        initialRegion={initialRegion}
         customMapStyle={darkMapStyle}
         showsUserLocation
         showsMyLocationButton={false}
+        onRegionChangeComplete={(r) => setRegion(r)}
       >
-        {COURTS.map((court) => (
+        {visibleCourts.map((court) => (
           <CourtMarker
             key={court.id}
             court={court}
@@ -122,13 +165,30 @@ export default function CourtMap() {
         </View>
       </View>
 
+      {tooZoomedOut && (
+        <View style={[styles.zoomHint, { bottom: insets.bottom + 110 }]}>
+          <Ionicons name="search-outline" size={15} color={Colors.textSecondary} />
+          <Text style={styles.zoomHintText}>Zoom in to see courts</Text>
+        </View>
+      )}
+
+      {!tooZoomedOut && visibleCourts.length > 0 && (
+        <View style={[styles.countBadge, { bottom: insets.bottom + 110 }]}>
+          <Text style={styles.countBadgeText}>
+            {visibleCourts.length} court{visibleCourts.length !== 1 ? "s" : ""} in view
+          </Text>
+        </View>
+      )}
+
       {selectedCourt && (
         <View style={[styles.bottomCard, { bottom: insets.bottom + 90 }]}>
           <Pressable onPress={() => setSelectedCourt(null)} style={styles.dismissBtn}>
             <Ionicons name="close" size={18} color={Colors.textSecondary} />
           </Pressable>
           <Text style={styles.bottomCardName}>{selectedCourt.shortName}</Text>
-          <Text style={styles.bottomCardAddress}>{selectedCourt.address}</Text>
+          <Text style={styles.bottomCardAddress}>
+            {selectedCourt.city}, {selectedCourt.state}
+          </Text>
           <View style={styles.bottomCardStats}>
             <View style={styles.statPill}>
               <View
@@ -243,6 +303,39 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_700Bold",
     fontSize: 14,
     color: Colors.text,
+  },
+  zoomHint: {
+    position: "absolute",
+    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(10,10,15,0.88)",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  zoomHintText: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 13,
+    color: Colors.textSecondary,
+  },
+  countBadge: {
+    position: "absolute",
+    alignSelf: "center",
+    backgroundColor: "rgba(10,10,15,0.88)",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  countBadgeText: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 13,
+    color: Colors.textSecondary,
   },
   bottomCard: {
     position: "absolute",

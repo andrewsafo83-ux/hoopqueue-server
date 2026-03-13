@@ -11,10 +11,10 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Location from "expo-location";
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
-import { Court, SkillLevel, CITIES } from "@/data/courts";
+import { Court, SkillLevel, US_STATES } from "@/data/courts";
 import { apiRequest, getApiUrl } from "@/lib/query-client";
 
-export { Court, CITIES };
+export { Court, US_STATES };
 
 function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371;
@@ -81,7 +81,10 @@ interface AppContextValue {
   setCourtFilter: (f: "all" | "indoor" | "outdoor") => void;
   cityFilter: string;
   setCityFilter: (city: string) => void;
+  stateFilter: string;
+  setStateFilter: (state: string) => void;
   availableCities: string[];
+  availableStates: { name: string; abbr: string }[];
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -117,6 +120,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [isLoaded, setIsLoaded] = useState(false);
   const [courtFilter, setCourtFilter] = useState<"all" | "indoor" | "outdoor">("all");
   const [cityFilter, setCityFilter] = useState<string>("All Cities");
+  const [stateFilter, setStateFilter] = useState<string>("All States");
   const [allCourts, setAllCourts] = useState<Court[]>([]);
   const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
 
@@ -361,8 +365,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const courts = useMemo(() => {
     const filtered = allCourts.filter((c) => {
       const typeMatch = courtFilter === "all" || c.type === courtFilter;
+      const stateMatch = stateFilter === "All States" || c.state === stateFilter;
       const cityMatch = cityFilter === "All Cities" || c.city === cityFilter;
-      return typeMatch && cityMatch;
+      return typeMatch && stateMatch && cityMatch;
     });
     if (userLocation) {
       return filtered.slice().sort((a, b) => {
@@ -372,12 +377,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
     }
     return filtered;
-  }, [allCourts, courtFilter, cityFilter, userLocation]);
+  }, [allCourts, courtFilter, stateFilter, cityFilter, userLocation]);
 
   const availableCities = useMemo(() => {
-    const cities = ["All Cities", ...Array.from(new Set(allCourts.map((c) => c.city))).sort()];
-    return cities;
-  }, [allCourts]);
+    const source = stateFilter === "All States" ? allCourts : allCourts.filter((c) => c.state === stateFilter);
+    return ["All Cities", ...Array.from(new Set(source.map((c) => c.city))).sort()];
+  }, [allCourts, stateFilter]);
+
+  const availableStates = useMemo(() => {
+    return US_STATES;
+  }, []);
 
   const value = useMemo<AppContextValue>(() => ({
     profile,
@@ -400,8 +409,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setCourtFilter,
     cityFilter,
     setCityFilter,
+    stateFilter,
+    setStateFilter,
     availableCities,
-  }), [profile, courts, allCourts, waitlists, playerCounts, isLoaded, userLocation, updateProfile, updateAvatar, refetchCourts, fetchCourtWaitlist, joinWaitlist, leaveWaitlist, isOnWaitlist, getMyPosition, getDistanceMiles, courtFilter, setCourtFilter, cityFilter, setCityFilter, availableCities]);
+    availableStates,
+  }), [profile, courts, allCourts, waitlists, playerCounts, isLoaded, userLocation, updateProfile, updateAvatar, refetchCourts, fetchCourtWaitlist, joinWaitlist, leaveWaitlist, isOnWaitlist, getMyPosition, getDistanceMiles, courtFilter, setCourtFilter, cityFilter, setCityFilter, stateFilter, setStateFilter, availableCities, availableStates]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
