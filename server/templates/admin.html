@@ -350,16 +350,28 @@
   async function login() {
     const pw = document.getElementById('pw-input').value;
     if (!pw) return;
-    // test the password against the API
-    const res = await fetch('/api/courts', { headers: { 'x-admin-password': pw } });
-    if (res.ok) {
-      adminPassword = pw;
-      sessionStorage.setItem('hq_admin_pw', pw);
-      document.getElementById('login-screen').style.display = 'none';
-      document.getElementById('app').style.display = 'block';
-      loadCourts();
-    } else {
-      document.getElementById('login-error').style.display = 'block';
+    const errEl = document.getElementById('login-error');
+    errEl.style.display = 'none';
+    try {
+      const res = await fetch('/api/admin/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminPassword: pw }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        adminPassword = pw;
+        sessionStorage.setItem('hq_admin_pw', pw);
+        document.getElementById('login-screen').style.display = 'none';
+        document.getElementById('app').style.display = 'block';
+        loadCourts();
+      } else {
+        errEl.textContent = data.message || 'Incorrect password.';
+        errEl.style.display = 'block';
+      }
+    } catch (e) {
+      errEl.textContent = 'Network error. Try again.';
+      errEl.style.display = 'block';
     }
   }
 
@@ -375,13 +387,23 @@
     if (e.key === 'Enter') login();
   });
 
-  // Auto-login if session has password
+  // Auto-login if session has password — re-verify on load
   const savedPw = sessionStorage.getItem('hq_admin_pw');
   if (savedPw) {
-    adminPassword = savedPw;
-    document.getElementById('login-screen').style.display = 'none';
-    document.getElementById('app').style.display = 'block';
-    loadCourts();
+    fetch('/api/admin/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ adminPassword: savedPw }),
+    }).then(r => {
+      if (r.ok) {
+        adminPassword = savedPw;
+        document.getElementById('login-screen').style.display = 'none';
+        document.getElementById('app').style.display = 'block';
+        loadCourts();
+      } else {
+        sessionStorage.removeItem('hq_admin_pw');
+      }
+    }).catch(() => sessionStorage.removeItem('hq_admin_pw'));
   }
 
   // ── Load ──────────────────────────────────────────────────────────────────

@@ -387,11 +387,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // ── Admin page ─────────────────────────────────────────────────────────────
+  // ── Admin page & auth ──────────────────────────────────────────────────────
+
+  const failedAttempts = new Map<string, { count: number; lockedUntil: number }>();
 
   app.get("/admin", (_req: Request, res: Response) => {
     const adminPath = path.resolve(process.cwd(), "server", "templates", "admin.html");
     res.status(200).send(fs.readFileSync(adminPath, "utf-8"));
+  });
+
+  app.post("/api/admin/verify", (req: Request, res: Response) => {
+    const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket.remoteAddress || "unknown";
+    const now = Date.now();
+    const record = failedAttempts.get(ip);
+
+    if (record && record.lockedUntil > now) {
+      const secs = Math.ceil((record.lockedUntil - now) / 1000);
+      return res.status(429).json({ message: `Too many failed attempts. Try again in ${secs}s.` });
+    }
+
+    const adminPassword = process.env.ADMIN_PASSWORD;
+    const provided = req.body?.adminPassword;
+
+    if (!adminPassword || provided !== adminPassword) {
+      const prev = failedAttempts.get(ip) ?? { count: 0, lockedUntil: 0 };
+      const count = prev.count + 1;
+      const lockedUntil = count >= 5 ? now + 15 * 60 * 1000 : 0;
+      failedAttempts.set(ip, { count, lockedUntil });
+      return res.status(403).json({ message: "Incorrect password." });
+    }
+
+    failedAttempts.delete(ip);
+    res.json({ ok: true });
   });
 
   // ── Courts (public) ────────────────────────────────────────────────────────
