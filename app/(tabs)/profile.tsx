@@ -144,6 +144,7 @@ export default function ProfileScreen() {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.avatarName}>{profile.username}</Text>
+            <Text style={styles.avatarId}>ID: {profile.userId}</Text>
             {profile.email ? (
               <Text style={styles.avatarEmail}>{profile.email}</Text>
             ) : null}
@@ -410,6 +411,7 @@ const styles = StyleSheet.create({
   },
   avatarText: { fontFamily: "Inter_700Bold", fontSize: 26, color: Colors.accent },
   avatarName: { fontFamily: "Inter_700Bold", fontSize: 18, color: Colors.text, marginBottom: 2 },
+  avatarId: { fontFamily: "Inter_400Regular", fontSize: 11, color: Colors.textTertiary, marginBottom: 8, letterSpacing: 0.3 },
   avatarEmail: { fontFamily: "Inter_400Regular", fontSize: 12, color: Colors.textSecondary, marginBottom: 6 },
   skillBadge: {
     alignSelf: "flex-start",
