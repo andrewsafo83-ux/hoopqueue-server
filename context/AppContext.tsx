@@ -65,7 +65,7 @@ interface AppContextValue {
   playerCounts: Record<string, number>;
   isLoaded: boolean;
   userLocation: UserLocation | null;
-  updateProfile: (username: string, email: string, phone: string, skillLevel: SkillLevel) => Promise<void>;
+  updateProfile: (username: string, email: string, phone: string, skillLevel: SkillLevel, forceUserId?: string) => Promise<void>;
   joinWaitlist: (courtId: string) => Promise<void>;
   leaveWaitlist: (courtId: string) => Promise<void>;
   isOnWaitlist: (courtId: string) => boolean;
@@ -80,7 +80,7 @@ interface AppContextValue {
 
 const AppContext = createContext<AppContextValue | null>(null);
 
-function generateUserId(): string {
+export function generateUserId(): string {
   return Date.now().toString() + Math.random().toString(36).substring(2, 9);
 }
 
@@ -196,8 +196,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(interval);
   }, [allCourts]);
 
-  const updateProfile = useCallback(async (username: string, email: string, phone: string, skillLevel: SkillLevel) => {
-    const userId = profile?.userId ?? generateUserId();
+  const updateProfile = useCallback(async (username: string, email: string, phone: string, skillLevel: SkillLevel, forceUserId?: string) => {
+    const userId = profile?.userId ?? forceUserId ?? generateUserId();
     const newProfile: UserProfile = { userId, username, email, phone: phone || undefined, skillLevel };
     setProfile(newProfile);
     await AsyncStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(newProfile));

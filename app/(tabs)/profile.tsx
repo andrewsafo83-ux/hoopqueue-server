@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -14,7 +14,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useApp } from "@/context/AppContext";
+import { useApp, generateUserId } from "@/context/AppContext";
 import { SKILL_LEVELS, SkillLevel } from "@/data/courts";
 import Colors from "@/constants/colors";
 import { getApiUrl } from "@/lib/query-client";
@@ -44,6 +44,8 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { profile, updateProfile, waitlists } = useApp();
+  const stableUserId = useRef(profile?.userId ?? generateUserId());
+  const displayUserId = profile?.userId ?? stableUserId.current;
   const [username, setUsername] = useState(profile?.username ?? "");
   const [email, setEmail] = useState(profile?.email ?? "");
   const [phone, setPhone] = useState(profile?.phone ?? "");
@@ -106,7 +108,7 @@ export default function ProfileScreen() {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
     try {
-      await updateProfile(username.trim(), email.trim().toLowerCase(), phone.trim(), skillLevel);
+      await updateProfile(username.trim(), email.trim().toLowerCase(), phone.trim(), skillLevel, stableUserId.current);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (err: any) {
@@ -144,7 +146,6 @@ export default function ProfileScreen() {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.avatarName}>{profile.username}</Text>
-            <Text style={styles.avatarId}>ID: {profile.userId}</Text>
             {profile.email ? (
               <Text style={styles.avatarEmail}>{profile.email}</Text>
             ) : null}
@@ -208,7 +209,11 @@ export default function ProfileScreen() {
           autoCorrect={false}
           autoCapitalize="words"
         />
-        <Text style={styles.fieldHint}>Visible to other players on waitlists and the live feed</Text>
+        <View style={styles.idRow}>
+          <Ionicons name="finger-print-outline" size={12} color={Colors.textTertiary} />
+          <Text style={styles.idText}>Player ID: {displayUserId}</Text>
+        </View>
+        <Text style={styles.fieldHint}>Your name is visible to other players on waitlists and the live feed</Text>
       </View>
 
       <View style={styles.section}>
@@ -520,6 +525,18 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.textTertiary,
     marginTop: 6,
+  },
+  idRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    marginTop: 8,
+  },
+  idText: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 11,
+    color: Colors.textTertiary,
+    letterSpacing: 0.3,
   },
   skillGrid: { gap: 8 },
   skillOption: {
