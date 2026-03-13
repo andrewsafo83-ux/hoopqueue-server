@@ -1,7 +1,5 @@
 
-import { isLiquidGlassAvailable } from "expo-glass-effect";
 import { Tabs } from "expo-router";
-import { NativeTabs, Icon, Label, Badge } from "expo-router/unstable-native-tabs";
 import { BlurView } from "expo-blur";
 import { Platform, StyleSheet, View } from "react-native";
 import React from "react";
@@ -28,36 +26,7 @@ function usePendingRequestCount() {
   return data.length;
 }
 
-function NativeTabLayout() {
-  const pending = usePendingRequestCount();
-  return (
-    <NativeTabs>
-      <NativeTabs.Trigger name="index">
-        <Icon sf={{ default: "map", selected: "map.fill" }} />
-        <Label>Map</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="courts">
-        <Icon sf={{ default: "sportscourt", selected: "sportscourt.fill" }} />
-        <Label>Courts</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="states">
-        <Icon sf={{ default: "flag", selected: "flag.fill" }} />
-        <Label>States</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="messages">
-        <Icon sf={{ default: "message", selected: "message.fill" }} />
-        <Label>Messages</Label>
-        {pending > 0 && <Badge>{pending}</Badge>}
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="profile">
-        <Icon sf={{ default: "person", selected: "person.fill" }} />
-        <Label>Profile</Label>
-      </NativeTabs.Trigger>
-    </NativeTabs>
-  );
-}
-
-function ClassicTabLayout() {
+export default function TabLayout() {
   const isIOS = Platform.OS === "ios";
   const isWeb = Platform.OS === "web";
   const pending = usePendingRequestCount();
@@ -123,7 +92,11 @@ function ClassicTabLayout() {
             <Ionicons name="chatbubble" size={size} color={color} />
           ),
           tabBarBadge: pending > 0 ? pending : undefined,
-          tabBarBadgeStyle: { backgroundColor: Colors.accent, color: "#fff", fontSize: 10 },
+          tabBarBadgeStyle: {
+            backgroundColor: Colors.accent,
+            color: "#fff",
+            fontSize: 10,
+          },
         }}
       />
       <Tabs.Screen
@@ -137,11 +110,4 @@ function ClassicTabLayout() {
       />
     </Tabs>
   );
-}
-
-export default function TabLayout() {
-  if (isLiquidGlassAvailable()) {
-    return <NativeTabLayout />;
-  }
-  return <ClassicTabLayout />;
 }
