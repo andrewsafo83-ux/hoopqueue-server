@@ -111,6 +111,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       `);
       await pool.query(`ALTER TABLE courts ADD COLUMN IF NOT EXISTS state_abbr VARCHAR(10) DEFAULT ''`);
 
+      // Always ensure California courts are present (inserted separately in case the table
+      // was seeded before CA courts were added to the codebase)
+      const caCountResult = await pool.query("SELECT COUNT(*) AS n FROM courts WHERE state_abbr = 'CA'");
+      if (parseInt(caCountResult.rows[0].n) === 0) {
+        console.log("No California courts found — inserting CA courts...");
+        const caChunkSize = 50;
+        const caCourts = CA_COURTS.map(c => ({ ...c, type: c.type as string, surface: c.surface as string }));
+        for (let i = 0; i < caCourts.length; i += caChunkSize) {
+          const chunk = caCourts.slice(i, i + caChunkSize);
+          const placeholders = chunk.map((_, j) => {
+            const b = j * 16;
+            return `($${b+1},$${b+2},$${b+3},$${b+4},$${b+5},$${b+6},$${b+7},$${b+8},$${b+9},$${b+10},$${b+11},$${b+12},$${b+13},$${b+14},$${b+15},$${b+16})`;
+          }).join(",");
+          const values = chunk.flatMap(c => [c.id,c.name,c.shortName,c.address,c.city,c.state,c.stateAbbr,"US",c.latitude,c.longitude,c.type,c.surface,c.hoops,c.description,c.basePlayersPlaying,c.maxPlayers]);
+          await pool.query(
+            `INSERT INTO courts (id,name,short_name,address,city,state,state_abbr,country,latitude,longitude,type,surface,hoops,description,base_players_playing,max_players)
+             VALUES ${placeholders} ON CONFLICT (id) DO NOTHING`,
+            values
+          );
+        }
+        console.log(`✓ Inserted ${caCourts.length} California courts`);
+      }
+
       const countResult = await pool.query("SELECT COUNT(*) AS n FROM courts");
       if (parseInt(countResult.rows[0].n) > 0) return;
 
