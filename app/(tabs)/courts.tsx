@@ -236,7 +236,7 @@ export default function CourtsScreen() {
   ), [playerCounts, getDistanceMiles]);
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top + (Platform.OS === "web" ? 67 : 0) }]}>
+    <View style={styles.container}>
       <View style={styles.header}>
         <View>
           <Text style={styles.headerTitle}>Courts</Text>

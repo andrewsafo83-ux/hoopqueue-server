@@ -371,7 +371,7 @@ function CreatePostModal({
       <KeyboardAvoidingView
         style={[
           styles.createContainer,
-          { paddingTop: insets.top, paddingBottom: insets.bottom },
+          { paddingTop: 0, paddingBottom: insets.bottom },
         ]}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
@@ -637,7 +637,7 @@ export default function FeedScreen() {
 
   if (!profile) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
+      <View style={styles.container}>
         <View style={styles.feedHeader}>
           <Text style={styles.feedTitle}>Feed</Text>
         </View>
@@ -654,7 +654,7 @@ export default function FeedScreen() {
   }
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={styles.container}>
       {/* Header */}
       <View style={styles.feedHeader}>
         <Text style={styles.feedTitle}>Feed</Text>

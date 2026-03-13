@@ -203,7 +203,7 @@ export default function MessagesScreen() {
   const [showSearch, setShowSearch] = useState(false);
   const [activeTab, setActiveTab] = useState<"chats" | "friends">("chats");
 
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
+  const topPad = 0;
 
   const { data: friends = [], isLoading: loadingFriends } = useQuery<Friend[]>({
     queryKey: ["/api/friends", userId],

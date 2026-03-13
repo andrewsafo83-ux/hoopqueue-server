@@ -1,7 +1,7 @@
 
 import { Tabs } from "expo-router";
 import { BlurView } from "expo-blur";
-import { Platform, StyleSheet, View } from "react-native";
+import { Platform, StyleSheet, Text, View } from "react-native";
 import React from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
@@ -34,7 +34,14 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        headerShown: false,
+        headerShown: true,
+        headerTitle: () => (
+          <Text style={{ fontFamily: "Inter_700Bold", fontSize: 16, color: Colors.accent, letterSpacing: 0.5 }}>
+            HoopQueue
+          </Text>
+        ),
+        headerStyle: { backgroundColor: Colors.background },
+        headerShadowVisible: false,
         tabBarActiveTintColor: Colors.accent,
         tabBarInactiveTintColor: Colors.textTertiary,
         tabBarStyle: {
