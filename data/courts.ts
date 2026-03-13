@@ -181,6 +181,72 @@ export const COURTS: Court[] = [
     maxPlayers: 10,
   },
 
+  // ── BEVERLY HILLS ─────────────────────────────────────────────────────────
+  {
+    id: "beverly-hills-la-cienega",
+    name: "La Cienega Park Basketball Courts",
+    shortName: "La Cienega Park",
+    address: "8400 Gregory Way, Beverly Hills, CA",
+    city: "Beverly Hills",
+    latitude: 34.0574,
+    longitude: -118.3776,
+    type: "outdoor",
+    surface: "asphalt",
+    hoops: 4,
+    description:
+      "Beverly Hills' premier outdoor courts inside La Cienega Park. Well-maintained and popular with locals and West LA players looking for competitive afternoon runs.",
+    basePlayersPlaying: 6,
+    maxPlayers: 10,
+  },
+  {
+    id: "beverly-hills-roxbury",
+    name: "Roxbury Park Recreation Center",
+    shortName: "Roxbury Park",
+    address: "471 S Roxbury Dr, Beverly Hills, CA",
+    city: "Beverly Hills",
+    latitude: 34.0601,
+    longitude: -118.4008,
+    type: "outdoor",
+    surface: "asphalt",
+    hoops: 2,
+    description:
+      "A Beverly Hills neighborhood favorite. Casual to intermediate runs in a clean, well-kept park setting. Great for evening pickup games.",
+    basePlayersPlaying: 4,
+    maxPlayers: 10,
+  },
+  {
+    id: "beverly-hills-crescent",
+    name: "Crescent Drive Park Courts",
+    shortName: "Crescent Drive Park",
+    address: "N Crescent Dr, Beverly Hills, CA",
+    city: "Beverly Hills",
+    latitude: 34.0776,
+    longitude: -118.4001,
+    type: "outdoor",
+    surface: "concrete",
+    hoops: 2,
+    description:
+      "Laid-back courts tucked into a quiet Beverly Hills neighborhood park. A go-to for halfcourt runs and skill work on weekday mornings.",
+    basePlayersPlaying: 3,
+    maxPlayers: 10,
+  },
+  {
+    id: "beverly-hills-equinox",
+    name: "Equinox Beverly Hills",
+    shortName: "Equinox BH",
+    address: "9601 Wilshire Blvd, Beverly Hills, CA",
+    city: "Beverly Hills",
+    latitude: 34.0664,
+    longitude: -118.3997,
+    type: "indoor",
+    surface: "hardwood",
+    hoops: 2,
+    description:
+      "Premium members-only indoor courts at one of LA's top fitness clubs. High-end facility drawing skilled players for competitive runs in a climate-controlled environment.",
+    basePlayersPlaying: 5,
+    maxPlayers: 10,
+  },
+
   // ── LONG BEACH ────────────────────────────────────────────────────────────
   {
     id: "long-beach-houghton",
@@ -212,6 +278,22 @@ export const COURTS: Court[] = [
     description:
       "Clean indoor hardwood in a full-facility gym. Well-organized open runs and league play for all skill levels.",
     basePlayersPlaying: 6,
+    maxPlayers: 10,
+  },
+  {
+    id: "csulb-pyramid-gym",
+    name: "Cal State Long Beach - The Pyramid Gym",
+    shortName: "CSULB Pyramid",
+    address: "1250 Bellflower Blvd, Long Beach, CA",
+    city: "Long Beach",
+    latitude: 33.7836,
+    longitude: -118.1141,
+    type: "indoor",
+    surface: "hardwood",
+    hoops: 4,
+    description:
+      "Elite indoor courts inside CSULB's iconic Pyramid arena. College-level competition with Beach students and alumni running full-court games throughout the week.",
+    basePlayersPlaying: 8,
     maxPlayers: 10,
   },
 
@@ -2673,6 +2755,7 @@ export const CITIES = [
   "All Cities",
   // Los Angeles Metro
   "Los Angeles",
+  "Beverly Hills",
   "Long Beach",
   "Burbank",
   "Pasadena",
