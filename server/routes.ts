@@ -84,6 +84,39 @@ async function sendPushNotifications(
 
 export async function registerRoutes(app: Express): Promise<Server> {
 
+  // ── Social feed tables ─────────────────────────────────────────────────────
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS posts (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      username TEXT NOT NULL,
+      avatar_base64 TEXT,
+      image_base64 TEXT NOT NULL,
+      caption TEXT,
+      court_id TEXT,
+      court_name TEXT,
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS post_likes (
+      post_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      PRIMARY KEY (post_id, user_id)
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS post_comments (
+      id TEXT PRIMARY KEY,
+      post_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      username TEXT NOT NULL,
+      avatar_base64 TEXT,
+      text TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+
   // ── Admin ─────────────────────────────────────────────────────────────────
 
   const ADMIN_USER_ID = "17731833451956z1lxkg";
@@ -775,6 +808,171 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (msg.userId !== userId) return res.status(403).json({ message: "Not your message" });
     courtMessages.set(courtId, messages.filter((m) => m.id !== msgId));
     res.json({ success: true });
+  });
+
+  // ── Social Feed ──────────────────────────────────────────────────────────────
+
+  app.get("/api/feed/:userId", async (req: Request, res: Response) => {
+    const { userId } = req.params;
+    try {
+      const result = await pool.query(
+        `SELECT p.*,
+          COUNT(DISTINCT pl.user_id)::int AS like_count,
+          COUNT(DISTINCT pc.id)::int AS comment_count,
+          BOOL_OR(pl.user_id = $1) AS user_liked
+         FROM posts p
+         LEFT JOIN post_likes pl ON pl.post_id = p.id
+         LEFT JOIN post_comments pc ON pc.post_id = p.id
+         WHERE p.user_id = $1
+           OR p.user_id IN (
+             SELECT CASE WHEN requester_id = $1 THEN addressee_id ELSE requester_id END
+             FROM friendships
+             WHERE (requester_id = $1 OR addressee_id = $1) AND status = 'accepted'
+           )
+         GROUP BY p.id
+         ORDER BY p.created_at DESC
+         LIMIT 50`,
+        [userId]
+      );
+      res.json(
+        result.rows.map((r) => ({
+          id: r.id,
+          userId: r.user_id,
+          username: r.username,
+          avatarBase64: r.avatar_base64,
+          imageBase64: r.image_base64,
+          caption: r.caption,
+          courtId: r.court_id,
+          courtName: r.court_name,
+          createdAt: r.created_at,
+          likeCount: r.like_count,
+          commentCount: r.comment_count,
+          userLiked: r.user_liked ?? false,
+        }))
+      );
+    } catch (err) {
+      console.error("Feed fetch error:", err);
+      res.status(500).json({ message: "Failed to fetch feed" });
+    }
+  });
+
+  app.post("/api/posts", async (req: Request, res: Response) => {
+    const { userId, username, avatarBase64, imageBase64, caption, courtId, courtName } = req.body;
+    if (!userId || !username || !imageBase64) {
+      return res.status(400).json({ message: "userId, username, and imageBase64 are required" });
+    }
+    if (caption && containsProfanity(caption)) {
+      return res.status(422).json({ message: "Your caption contains language that isn't allowed. Keep it clean." });
+    }
+    const id = generateId();
+    try {
+      await pool.query(
+        `INSERT INTO posts (id, user_id, username, avatar_base64, image_base64, caption, court_id, court_name)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [id, userId, username, avatarBase64 ?? null, imageBase64, caption ?? null, courtId ?? null, courtName ?? null]
+      );
+      res.status(201).json({ id, userId, username, avatarBase64, imageBase64, caption, courtId, courtName, likeCount: 0, commentCount: 0, userLiked: false, createdAt: new Date() });
+    } catch (err) {
+      console.error("Create post error:", err);
+      res.status(500).json({ message: "Failed to create post" });
+    }
+  });
+
+  app.delete("/api/posts/:postId", async (req: Request, res: Response) => {
+    const { postId } = req.params;
+    const { userId } = req.body;
+    try {
+      const check = await pool.query("SELECT user_id FROM posts WHERE id = $1", [postId]);
+      if (check.rows.length === 0) return res.status(404).json({ message: "Post not found" });
+      if (check.rows[0].user_id !== userId) return res.status(403).json({ message: "Not your post" });
+      await pool.query("DELETE FROM post_likes WHERE post_id = $1", [postId]);
+      await pool.query("DELETE FROM post_comments WHERE post_id = $1", [postId]);
+      await pool.query("DELETE FROM posts WHERE id = $1", [postId]);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to delete post" });
+    }
+  });
+
+  app.post("/api/posts/:postId/like", async (req: Request, res: Response) => {
+    const { postId } = req.params;
+    const { userId } = req.body;
+    if (!userId) return res.status(400).json({ message: "userId required" });
+    try {
+      const existing = await pool.query(
+        "SELECT 1 FROM post_likes WHERE post_id = $1 AND user_id = $2",
+        [postId, userId]
+      );
+      if (existing.rows.length > 0) {
+        await pool.query("DELETE FROM post_likes WHERE post_id = $1 AND user_id = $2", [postId, userId]);
+        res.json({ liked: false });
+      } else {
+        await pool.query("INSERT INTO post_likes (post_id, user_id) VALUES ($1, $2)", [postId, userId]);
+        res.json({ liked: true });
+      }
+    } catch (err) {
+      res.status(500).json({ message: "Failed to toggle like" });
+    }
+  });
+
+  app.get("/api/posts/:postId/comments", async (req: Request, res: Response) => {
+    const { postId } = req.params;
+    try {
+      const result = await pool.query(
+        "SELECT * FROM post_comments WHERE post_id = $1 ORDER BY created_at ASC",
+        [postId]
+      );
+      res.json(
+        result.rows.map((r) => ({
+          id: r.id,
+          postId: r.post_id,
+          userId: r.user_id,
+          username: r.username,
+          avatarBase64: r.avatar_base64,
+          text: r.text,
+          createdAt: r.created_at,
+        }))
+      );
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch comments" });
+    }
+  });
+
+  app.post("/api/posts/:postId/comments", async (req: Request, res: Response) => {
+    const { postId } = req.params;
+    const { userId, username, avatarBase64, text } = req.body;
+    if (!userId || !username || !text) {
+      return res.status(400).json({ message: "userId, username, and text are required" });
+    }
+    const trimmed = text.trim();
+    if (!trimmed || trimmed.length > 300) return res.status(400).json({ message: "Comment must be 1–300 characters" });
+    if (containsProfanity(trimmed)) {
+      return res.status(422).json({ message: "Your comment contains language that isn't allowed. Keep it clean." });
+    }
+    const id = generateId();
+    try {
+      await pool.query(
+        "INSERT INTO post_comments (id, post_id, user_id, username, avatar_base64, text) VALUES ($1, $2, $3, $4, $5, $6)",
+        [id, postId, userId, username, avatarBase64 ?? null, trimmed]
+      );
+      res.status(201).json({ id, postId, userId, username, avatarBase64, text: trimmed, createdAt: new Date() });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to add comment" });
+    }
+  });
+
+  app.delete("/api/posts/:postId/comments/:commentId", async (req: Request, res: Response) => {
+    const { commentId } = req.params;
+    const { userId } = req.body;
+    try {
+      const check = await pool.query("SELECT user_id FROM post_comments WHERE id = $1", [commentId]);
+      if (check.rows.length === 0) return res.status(404).json({ message: "Comment not found" });
+      if (check.rows[0].user_id !== userId) return res.status(403).json({ message: "Not your comment" });
+      await pool.query("DELETE FROM post_comments WHERE id = $1", [commentId]);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to delete comment" });
+    }
   });
 
   const httpServer = createServer(app);
