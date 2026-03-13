@@ -9,7 +9,10 @@ import {
   Platform,
   Alert,
   Linking,
+  Image,
+  ActivityIndicator,
 } from "react-native";
+import * as ImagePicker from "expo-image-picker";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
@@ -43,7 +46,8 @@ function openUrl(path: string) {
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { profile, updateProfile, waitlists } = useApp();
+  const { profile, updateProfile, updateAvatar, waitlists } = useApp();
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const stableUserId = useRef(profile?.userId ?? generateUserId());
   const displayUserId = profile?.userId ?? stableUserId.current;
   const [username, setUsername] = useState(profile?.username ?? "");
@@ -82,6 +86,40 @@ export default function ProfileScreen() {
     if (digits.length <= 3) return digits;
     if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
     return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+  }
+
+  async function handlePickAvatar() {
+    if (!profile) {
+      Alert.alert("Create profile first", "Please save your profile before adding a photo.");
+      return;
+    }
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permission needed", "Allow photo access to set a profile picture.");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.4,
+      base64: true,
+    });
+    if (result.canceled || !result.assets[0]?.base64) return;
+    const base64 = `data:image/jpeg;base64,${result.assets[0].base64}`;
+    if (base64.length > 500000) {
+      Alert.alert("Photo too large", "Please choose a smaller or lower resolution photo.");
+      return;
+    }
+    setIsUploadingAvatar(true);
+    if (Platform.OS !== "web") await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    try {
+      await updateAvatar(base64);
+    } catch {
+      Alert.alert("Error", "Could not save photo. Please try again.");
+    } finally {
+      setIsUploadingAvatar(false);
+    }
   }
 
   async function handleSave() {
@@ -148,11 +186,22 @@ export default function ProfileScreen() {
 
       {profile ? (
         <View style={styles.avatarRow}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>
-              {profile.username.charAt(0).toUpperCase()}
-            </Text>
-          </View>
+          <TouchableOpacity onPress={handlePickAvatar} style={styles.avatarWrap} activeOpacity={0.8}>
+            {profile.avatarBase64 ? (
+              <Image source={{ uri: profile.avatarBase64 }} style={styles.avatarImage} />
+            ) : (
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>
+                  {profile.username.charAt(0).toUpperCase()}
+                </Text>
+              </View>
+            )}
+            <View style={styles.avatarCameraBtn}>
+              {isUploadingAvatar
+                ? <ActivityIndicator size="small" color="#fff" />
+                : <Ionicons name="camera" size={13} color="#fff" />}
+            </View>
+          </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <Text style={styles.avatarName}>{profile.username}</Text>
             {profile.handle ? (
@@ -459,6 +508,27 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderWidth: 2,
     borderColor: Colors.accent,
+  },
+  avatarWrap: { position: "relative" },
+  avatarImage: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    borderWidth: 2,
+    borderColor: Colors.accent,
+  },
+  avatarCameraBtn: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    backgroundColor: Colors.accent,
+    borderRadius: 10,
+    width: 22,
+    height: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: Colors.background,
   },
   avatarText: { fontFamily: "Inter_700Bold", fontSize: 26, color: Colors.accent },
   avatarName: { fontFamily: "Inter_700Bold", fontSize: 18, color: Colors.text, marginBottom: 2 },

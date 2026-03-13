@@ -207,6 +207,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ── Avatar ─────────────────────────────────────────────────────────────────
+
+  app.post("/api/users/:userId/avatar", async (req: Request, res: Response) => {
+    const { userId } = req.params;
+    const { base64, requesterId } = req.body;
+    if (!requesterId || requesterId !== userId) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+    if (!base64 || typeof base64 !== "string") {
+      return res.status(400).json({ message: "base64 image required" });
+    }
+    if (base64.length > 500000) {
+      return res.status(413).json({ message: "Image too large. Please choose a smaller photo." });
+    }
+    try {
+      await pool.query(
+        "UPDATE users SET avatar_base64 = $1, updated_at = NOW() WHERE user_id = $2",
+        [base64, userId]
+      );
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Avatar update error:", err);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.get("/api/users/:userId/avatar", async (req: Request, res: Response) => {
+    const { userId } = req.params;
+    try {
+      const result = await pool.query(
+        "SELECT avatar_base64 FROM users WHERE user_id = $1",
+        [userId]
+      );
+      if (result.rows.length === 0) return res.status(404).json({ message: "User not found" });
+      res.json({ avatar_base64: result.rows[0].avatar_base64 ?? null });
+    } catch (err) {
+      console.error("Avatar fetch error:", err);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
   // ── Friendships ────────────────────────────────────────────────────────────
 
   // IMPORTANT: specific routes before wildcard ─ /api/friends/requests/:id before /api/friends/:id

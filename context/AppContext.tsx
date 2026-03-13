@@ -41,6 +41,7 @@ export interface UserProfile {
   email: string;
   phone?: string;
   skillLevel: SkillLevel;
+  avatarBase64?: string;
 }
 
 export interface WaitlistEntry {
@@ -67,6 +68,7 @@ interface AppContextValue {
   isLoaded: boolean;
   userLocation: UserLocation | null;
   updateProfile: (username: string, handle: string, email: string, phone: string, skillLevel: SkillLevel, forceUserId?: string) => Promise<void>;
+  updateAvatar: (base64: string) => Promise<void>;
   joinWaitlist: (courtId: string) => Promise<void>;
   leaveWaitlist: (courtId: string) => Promise<void>;
   isOnWaitlist: (courtId: string) => boolean;
@@ -209,6 +211,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [profile]);
 
+  const updateAvatar = useCallback(async (base64: string) => {
+    if (!profile) return;
+    const newProfile = { ...profile, avatarBase64: base64 };
+    setProfile(newProfile);
+    await AsyncStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(newProfile));
+    try {
+      await apiRequest("POST", `/api/users/${profile.userId}/avatar`, {
+        base64,
+        requesterId: profile.userId,
+      });
+    } catch (err) {
+      console.warn("Could not sync avatar to server:", err);
+    }
+  }, [profile]);
+
   const joinWaitlist = useCallback(async (courtId: string) => {
     if (!profile) return;
     const existing = waitlists[courtId] ?? [];
@@ -289,6 +306,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     isLoaded,
     userLocation,
     updateProfile,
+    updateAvatar,
     joinWaitlist,
     leaveWaitlist,
     isOnWaitlist,
@@ -299,7 +317,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     cityFilter,
     setCityFilter,
     availableCities,
-  }), [profile, courts, allCourts, waitlists, playerCounts, isLoaded, userLocation, updateProfile, joinWaitlist, leaveWaitlist, isOnWaitlist, getMyPosition, getDistanceMiles, courtFilter, setCourtFilter, cityFilter, setCityFilter, availableCities]);
+  }), [profile, courts, allCourts, waitlists, playerCounts, isLoaded, userLocation, updateProfile, updateAvatar, joinWaitlist, leaveWaitlist, isOnWaitlist, getMyPosition, getDistanceMiles, courtFilter, setCourtFilter, cityFilter, setCityFilter, availableCities]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
