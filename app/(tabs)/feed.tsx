@@ -11,11 +11,11 @@ import {
   TextInput,
   Alert,
   RefreshControl,
-  KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
   Dimensions,
 } from "react-native";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -189,7 +189,7 @@ function CommentsModal({
     >
       <KeyboardAvoidingView
         style={[styles.modalContainer, { paddingBottom: insets.bottom }]}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        behavior="padding"
         keyboardVerticalOffset={0}
       >
         {/* Handle & header */}
@@ -213,6 +213,8 @@ function CommentsModal({
             data={comments}
             keyExtractor={(c) => c.id}
             contentContainerStyle={{ padding: 16, paddingBottom: 8 }}
+            keyboardDismissMode="interactive"
+            keyboardShouldPersistTaps="handled"
             renderItem={({ item: c }) => (
               <View style={styles.commentRow}>
                 <Avatar base64={c.avatarBase64} username={c.username} size={32} />
@@ -373,7 +375,7 @@ function CreatePostModal({
           styles.createContainer,
           { paddingTop: 0, paddingBottom: insets.bottom },
         ]}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        behavior="padding"
       >
         {/* Header */}
         <View style={[styles.createHeader, { paddingTop: insets.top + 8 }]}>
