@@ -273,7 +273,7 @@ function CommentsModal({
               maxLength={300}
               returnKeyType="send"
               onSubmitEditing={handleSend}
-              multiline
+              blurOnSubmit={false}
             />
             <TouchableOpacity
               onPress={handleSend}
