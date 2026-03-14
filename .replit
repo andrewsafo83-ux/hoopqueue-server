@@ -72,3 +72,9 @@ task = "shell.exec"
 args = "npm run expo:dev"
 waitForPort = 8081
 ensurePreviewReachable = "/status"
+
+[userenv]
+
+[userenv.shared]
+SUPABASE_URL = "https://ibcbvsiedftmjhezpcna.supabase.co"
+SUPABASE_SERVICE_ROLE_KEY = "sb_secret_qaTx61JhJJENLOjw6wJgBw_Amsy47rs"
