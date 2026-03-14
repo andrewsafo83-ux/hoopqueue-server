@@ -2518,11 +2518,14 @@ async function registerRoutes(app2) {
          FROM posts p
          LEFT JOIN post_likes pl ON pl.post_id = p.id
          LEFT JOIN post_comments pc ON pc.post_id = p.id
-         WHERE p.user_id = $1
-           OR p.user_id IN (
-             SELECT CASE WHEN requester_id = $1 THEN addressee_id ELSE requester_id END
-             FROM friendships
-             WHERE (requester_id = $1 OR addressee_id = $1) AND status = 'accepted'
+         WHERE p.deleted_at IS NULL
+           AND (
+             p.user_id = $1
+             OR p.user_id IN (
+               SELECT CASE WHEN requester_id = $1 THEN addressee_id ELSE requester_id END
+               FROM friendships
+               WHERE (requester_id = $1 OR addressee_id = $1) AND status = 'accepted'
+             )
            )
          GROUP BY p.id
          ORDER BY p.created_at DESC
@@ -2579,13 +2582,60 @@ async function registerRoutes(app2) {
     try {
       const check = await pool.query("SELECT user_id FROM posts WHERE id = $1", [postId]);
       if (check.rows.length === 0) return res.status(404).json({ message: "Post not found" });
-      if (check.rows[0].user_id !== userId) return res.status(403).json({ message: "Not your post" });
-      await pool.query("DELETE FROM post_likes WHERE post_id = $1", [postId]);
-      await pool.query("DELETE FROM post_comments WHERE post_id = $1", [postId]);
-      await pool.query("DELETE FROM posts WHERE id = $1", [postId]);
+      const isAdmin = userId === ADMIN_USER_ID;
+      if (check.rows[0].user_id !== userId && !isAdmin) return res.status(403).json({ message: "Not your post" });
+      await pool.query(
+        "UPDATE posts SET deleted_at = NOW(), deleted_by = $1 WHERE id = $2",
+        [userId, postId]
+      );
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ message: "Failed to delete post" });
+    }
+  });
+  app2.get("/api/admin/posts", async (req, res) => {
+    const { userId } = req.query;
+    if (userId !== ADMIN_USER_ID) return res.status(403).json({ message: "Forbidden" });
+    try {
+      const result = await pool.query(`
+        SELECT p.id, p.user_id, p.username, p.image_url, p.image_base64,
+               p.caption, p.court_name, p.created_at, p.deleted_at, p.deleted_by,
+               COUNT(DISTINCT pl.user_id)::int AS like_count,
+               COUNT(DISTINCT pc.id)::int AS comment_count
+        FROM posts p
+        LEFT JOIN post_likes pl ON pl.post_id = p.id
+        LEFT JOIN post_comments pc ON pc.post_id = p.id
+        GROUP BY p.id
+        ORDER BY p.created_at DESC
+        LIMIT 200
+      `);
+      res.json(result.rows.map((r) => ({
+        id: r.id,
+        userId: r.user_id,
+        username: r.username,
+        imageUrl: r.image_url ?? null,
+        imageBase64: r.image_base64 ?? null,
+        caption: r.caption ?? null,
+        courtName: r.court_name ?? null,
+        createdAt: r.created_at,
+        deletedAt: r.deleted_at ?? null,
+        deletedBy: r.deleted_by ?? null,
+        likeCount: r.like_count,
+        commentCount: r.comment_count
+      })));
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch posts" });
+    }
+  });
+  app2.post("/api/admin/posts/:postId/restore", async (req, res) => {
+    const { postId } = req.params;
+    const { userId } = req.body;
+    if (userId !== ADMIN_USER_ID) return res.status(403).json({ message: "Forbidden" });
+    try {
+      await pool.query("UPDATE posts SET deleted_at = NULL, deleted_by = NULL WHERE id = $1", [postId]);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to restore post" });
     }
   });
   app2.post("/api/posts/:postId/like", async (req, res) => {
