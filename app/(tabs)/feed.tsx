@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -106,6 +106,26 @@ function Avatar({
 
 // ── Comments Modal ────────────────────────────────────────────────────────────
 
+function useWebKeyboardHeight() {
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    const vv = (window as any).visualViewport;
+    if (!vv) return;
+    const update = () => {
+      const kh = window.innerHeight - vv.height - vv.offsetTop;
+      setKeyboardHeight(Math.max(0, kh));
+    };
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+    };
+  }, []);
+  return keyboardHeight;
+}
+
 function CommentsModal({
   post,
   visible,
@@ -117,6 +137,7 @@ function CommentsModal({
 }) {
   const { profile } = useApp();
   const insets = useSafeAreaInsets();
+  const webKeyboardHeight = useWebKeyboardHeight();
   const qc = useQueryClient();
   const [text, setText] = useState("");
   const inputRef = useRef<TextInput>(null);
@@ -188,7 +209,7 @@ function CommentsModal({
       onRequestClose={onClose}
     >
       <KeyboardAvoidingView
-        style={[styles.modalContainer, { paddingBottom: insets.bottom }]}
+        style={[styles.modalContainer, { paddingBottom: Platform.OS === "web" ? webKeyboardHeight : insets.bottom }]}
         behavior="padding"
         keyboardVerticalOffset={0}
       >
