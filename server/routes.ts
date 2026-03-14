@@ -351,7 +351,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ── Admin ─────────────────────────────────────────────────────────────────
 
-  const ADMIN_USER_ID = "17731833451956z1lxkg";
+  const ADMIN_USER_ID = "17734724774840shljhn";
 
   app.get("/api/admin/stats", async (req: Request, res: Response) => {
     const { userId } = req.query as { userId: string };

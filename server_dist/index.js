@@ -1778,7 +1778,7 @@ async function registerRoutes(app2) {
       res.status(500).json({ message: "Failed to fetch analytics" });
     }
   });
-  const ADMIN_USER_ID = "17731833451956z1lxkg";
+  const ADMIN_USER_ID = "17734724774840shljhn";
   app2.get("/api/admin/stats", async (req, res) => {
     const { userId } = req.query;
     if (userId !== ADMIN_USER_ID) {

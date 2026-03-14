@@ -22,7 +22,7 @@ import { SKILL_LEVELS, SkillLevel } from "@/data/courts";
 import Colors from "@/constants/colors";
 import { getApiUrl } from "@/lib/query-client";
 
-const ADMIN_USER_ID = "17731833451956z1lxkg";
+const ADMIN_USER_ID = "17734724774840shljhn";
 
 const SKILL_DESCRIPTIONS: Record<SkillLevel, string> = {
   Beginner: "Just learning the game",

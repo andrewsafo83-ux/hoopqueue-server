@@ -19,7 +19,7 @@ import { useApp } from "@/context/AppContext";
 import Colors from "@/constants/colors";
 import { getApiUrl } from "@/lib/query-client";
 
-const ADMIN_USER_ID = "17731833451956z1lxkg";
+const ADMIN_USER_ID = "17734724774840shljhn";
 
 const SKILL_COLORS: Record<string, string> = {
   Beginner: "#60A5FA",
