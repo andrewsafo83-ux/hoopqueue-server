@@ -42,3 +42,9 @@ id = "nvzA6LIK1DfcoUR5R9ts-"
 uri = "file://attached_assets/generated_images/screenshot_courtdetail_v2.png"
 type = "image"
 title = "Screenshot 3 — Court Detail & Live Feed"
+
+[[outputs]]
+id = "Ua-P5VVZYUEhewqYUkpiz"
+uri = "file://attached_assets/hoopqueue_promo_24s.mp4"
+type = "video"
+title = "HoopQueue Promo - 24 seconds"
