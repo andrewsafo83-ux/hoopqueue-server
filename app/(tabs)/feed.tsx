@@ -23,6 +23,7 @@ import * as ImagePicker from "expo-image-picker";
 import Colors from "@/constants/colors";
 import { useApp } from "@/context/AppContext";
 import { getApiUrl, apiRequest } from "@/lib/query-client";
+import { track } from "@/lib/analytics";
 
 const SCREEN_W = Dimensions.get("window").width;
 
@@ -167,6 +168,7 @@ function CommentsModal({
     },
     onSuccess: () => {
       setText("");
+      track("comment_added", profile?.userId, { postId: post?.id });
       qc.invalidateQueries({ queryKey: ["/api/posts/comments", post?.id] });
       qc.invalidateQueries({ queryKey: ["/api/feed", profile?.userId] });
     },
@@ -376,6 +378,7 @@ function CreatePostModal({
       });
     },
     onSuccess: () => {
+      track("post_created", profile?.userId, { hasCaption: !!(caption.trim()) });
       qc.invalidateQueries({ queryKey: ["/api/feed", profile?.userId] });
       handleClose();
     },
@@ -618,6 +621,11 @@ export default function FeedScreen() {
         )
       );
       return { prev };
+    },
+    onSuccess: (_data, postId) => {
+      const posts = qc.getQueryData<Post[]>(["/api/feed", userId]) ?? [];
+      const post = posts.find((p) => p.id === postId);
+      if (post?.userLiked) track("post_liked", userId, { postId });
     },
     onError: (_err, _postId, ctx) => {
       if (ctx?.prev) qc.setQueryData(["/api/feed", userId], ctx.prev);

@@ -21,6 +21,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useApp } from "@/context/AppContext";
 import Colors from "@/constants/colors";
 import { apiRequest } from "@/lib/query-client";
+import { track } from "@/lib/analytics";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -287,6 +288,13 @@ export default function CourtDetailScreen() {
   const scrollRef = useRef<ScrollView>(null);
 
   const court = allCourts.find((c) => c.id === id);
+
+  // ── Track court view ───────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!id) return;
+    track("court_view", profile?.userId, { courtId: id, courtName: court?.name });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
   // ── Load waitlist from server ──────────────────────────────────────────────
   useEffect(() => {

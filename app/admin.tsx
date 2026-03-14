@@ -179,7 +179,7 @@ export default function AdminScreen() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selectedUser, setSelectedUser] = useState<UserRow | null>(null);
-  const [activeTab, setActiveTab] = useState<"overview" | "users">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "users" | "analytics">("overview");
   const topPad = insets.top + (Platform.OS === "web" ? 67 : 0);
 
   const statsQuery = useQuery<AdminStats>({
@@ -201,6 +201,25 @@ export default function AdminScreen() {
       return res.json();
     },
     refetchInterval: 60000,
+  });
+
+  const analyticsQuery = useQuery<{
+    eventCounts: { event: string; count: string }[];
+    dailyActive: { date: string; dau: string }[];
+    topEventsThisWeek: { event: string; count: string }[];
+    platformSplit: { platform: string; count: string }[];
+    recentEvents: { event: string; user_id: string; username: string; properties: any; platform: string; created_at: string }[];
+  }>({
+    queryKey: ["/api/admin/analytics", profile?.userId],
+    enabled: profile?.userId === ADMIN_USER_ID && activeTab === "analytics",
+    queryFn: async () => {
+      const url = new URL("/api/admin/analytics", getApiUrl());
+      url.searchParams.set("userId", profile!.userId);
+      const res = await fetch(url.toString());
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+    refetchInterval: 30000,
   });
 
   const handleSearchChange = useCallback((text: string) => {
@@ -248,8 +267,14 @@ export default function AdminScreen() {
           onPress={() => setActiveTab("users")}
         >
           <Text style={[styles.tabText, activeTab === "users" && styles.tabTextActive]}>
-            All Users{data ? ` (${data.totalUsers})` : ""}
+            Users{data ? ` (${data.totalUsers})` : ""}
           </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === "analytics" && styles.tabActive]}
+          onPress={() => setActiveTab("analytics")}
+        >
+          <Text style={[styles.tabText, activeTab === "analytics" && styles.tabTextActive]}>Analytics</Text>
         </TouchableOpacity>
       </View>
 
@@ -386,7 +411,7 @@ export default function AdminScreen() {
             </>
           ) : null}
         </ScrollView>
-      ) : (
+      ) : activeTab === "users" ? (
         <View style={{ flex: 1 }}>
           <View style={styles.searchBar}>
             <Ionicons name="search-outline" size={16} color={Colors.textSecondary} style={{ marginRight: 8 }} />
@@ -475,6 +500,119 @@ export default function AdminScreen() {
             />
           )}
         </View>
+      ) : (
+        /* Analytics Tab */
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 40 }]}
+          showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={analyticsQuery.isRefetching} onRefresh={analyticsQuery.refetch} tintColor={Colors.accent} />}
+        >
+          {analyticsQuery.isLoading ? (
+            <View style={styles.center}><Text style={styles.loadingText}>Loading analytics...</Text></View>
+          ) : analyticsQuery.data ? (
+            <>
+              {/* Platform Split */}
+              <Text style={styles.sectionLabel}>Platform</Text>
+              <View style={styles.statRow}>
+                {analyticsQuery.data.platformSplit.map((p) => (
+                  <StatCard
+                    key={p.platform}
+                    label={p.platform}
+                    value={p.count}
+                    color={p.platform === "ios" ? "#60A5FA" : p.platform === "android" ? Colors.green : Colors.accent}
+                    icon={p.platform === "ios" ? "logo-apple" : p.platform === "android" ? "logo-android" : "globe-outline"}
+                  />
+                ))}
+              </View>
+
+              {/* Top Events This Week */}
+              <Text style={styles.sectionLabel}>Top Events — Last 7 Days</Text>
+              <View style={styles.card}>
+                {analyticsQuery.data.topEventsThisWeek.length === 0 ? (
+                  <Text style={styles.emptyText}>No events yet</Text>
+                ) : analyticsQuery.data.topEventsThisWeek.map((e, i) => {
+                  const maxCount = parseInt(analyticsQuery.data.topEventsThisWeek[0]?.count ?? "1");
+                  const pct = (parseInt(e.count) / maxCount) * 100;
+                  return (
+                    <View key={e.event}>
+                      <View style={styles.skillRow}>
+                        <Text style={styles.skillName}>{e.event}</Text>
+                        <Text style={[styles.skillCount, { color: Colors.accent }]}>{e.count}</Text>
+                      </View>
+                      <View style={styles.barTrack}>
+                        <View style={[styles.barFill, { width: `${pct}%` as any, backgroundColor: Colors.accent }]} />
+                      </View>
+                      {i < analyticsQuery.data.topEventsThisWeek.length - 1 && <View style={styles.divider} />}
+                    </View>
+                  );
+                })}
+              </View>
+
+              {/* All-Time Event Counts */}
+              <Text style={styles.sectionLabel}>All-Time Event Counts</Text>
+              <View style={styles.card}>
+                {analyticsQuery.data.eventCounts.length === 0 ? (
+                  <Text style={styles.emptyText}>No events tracked yet</Text>
+                ) : analyticsQuery.data.eventCounts.map((e, i) => (
+                  <View key={e.event}>
+                    <View style={styles.monoRow}>
+                      <Text style={styles.monoText}>{e.event}</Text>
+                      <Text style={[styles.monoValue, { color: Colors.green }]}>{e.count}</Text>
+                    </View>
+                    {i < analyticsQuery.data.eventCounts.length - 1 && <View style={styles.detailDivider} />}
+                  </View>
+                ))}
+              </View>
+
+              {/* DAU Last 30 Days */}
+              <Text style={styles.sectionLabel}>Daily Active Users (30 days)</Text>
+              <View style={styles.card}>
+                {analyticsQuery.data.dailyActive.length === 0 ? (
+                  <Text style={styles.emptyText}>No data yet</Text>
+                ) : analyticsQuery.data.dailyActive.slice(0, 14).map((d, i) => {
+                  const maxDau = parseInt(analyticsQuery.data.dailyActive[0]?.dau ?? "1");
+                  const pct = (parseInt(d.dau) / Math.max(maxDau, 1)) * 100;
+                  return (
+                    <View key={d.date}>
+                      <View style={styles.skillRow}>
+                        <Text style={styles.skillName}>{new Date(d.date).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</Text>
+                        <Text style={[styles.skillCount, { color: Colors.green }]}>{d.dau} DAU</Text>
+                      </View>
+                      <View style={styles.barTrack}>
+                        <View style={[styles.barFill, { width: `${pct}%` as any, backgroundColor: Colors.green }]} />
+                      </View>
+                      {i < Math.min(analyticsQuery.data.dailyActive.length, 14) - 1 && <View style={styles.divider} />}
+                    </View>
+                  );
+                })}
+              </View>
+
+              {/* Recent Events Feed */}
+              <Text style={styles.sectionLabel}>Recent Events</Text>
+              <View style={styles.card}>
+                {analyticsQuery.data.recentEvents.length === 0 ? (
+                  <Text style={styles.emptyText}>No events yet</Text>
+                ) : analyticsQuery.data.recentEvents.map((e, i) => (
+                  <View key={i}>
+                    <View style={styles.monoRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.monoText, { fontSize: 13 }]}>{e.event}</Text>
+                        <Text style={styles.userEmail}>{e.username || e.user_id || "anonymous"} · {e.platform}</Text>
+                      </View>
+                      <Text style={styles.userTime}>{timeAgo(e.created_at)}</Text>
+                    </View>
+                    {i < analyticsQuery.data.recentEvents.length - 1 && <View style={styles.detailDivider} />}
+                  </View>
+                ))}
+              </View>
+            </>
+          ) : (
+            <View style={styles.center}>
+              <Text style={styles.emptyText}>Switch to this tab to load analytics</Text>
+            </View>
+          )}
+        </ScrollView>
       )}
 
       <UserDetailModal user={selectedUser} visible={!!selectedUser} onClose={() => setSelectedUser(null)} />

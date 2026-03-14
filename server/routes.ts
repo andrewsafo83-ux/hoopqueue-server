@@ -271,6 +271,84 @@ export async function registerRoutes(app: Express): Promise<Server> {
     )
   `);
 
+  // ── Analytics events table ─────────────────────────────────────────────────
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS analytics_events (
+      id SERIAL PRIMARY KEY,
+      event TEXT NOT NULL,
+      user_id TEXT,
+      properties JSONB DEFAULT '{}',
+      platform TEXT,
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_analytics_event ON analytics_events(event)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_analytics_user ON analytics_events(user_id)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_analytics_created ON analytics_events(created_at)`);
+
+  // POST /api/analytics — fire-and-forget event ingestion
+  app.post("/api/analytics", async (req: Request, res: Response) => {
+    const { event, userId, properties, platform } = req.body;
+    if (!event) return res.status(400).json({ message: "event required" });
+    try {
+      await pool.query(
+        "INSERT INTO analytics_events (event, user_id, properties, platform) VALUES ($1, $2, $3, $4)",
+        [event, userId ?? null, JSON.stringify(properties ?? {}), platform ?? null]
+      );
+      res.status(201).json({ ok: true });
+    } catch {
+      res.status(500).json({ message: "Failed to record event" });
+    }
+  });
+
+  // GET /api/admin/analytics — aggregated event stats for admin
+  app.get("/api/admin/analytics", async (req: Request, res: Response) => {
+    const { userId } = req.query as { userId: string };
+    if (userId !== ADMIN_USER_ID) return res.status(403).json({ message: "Forbidden" });
+    try {
+      const [eventCounts, dailyActive, topEvents, platformSplit, recentEvents] = await Promise.all([
+        pool.query(`
+          SELECT event, COUNT(*) as count
+          FROM analytics_events
+          GROUP BY event ORDER BY count DESC
+        `),
+        pool.query(`
+          SELECT DATE(created_at) as date, COUNT(DISTINCT user_id) as dau
+          FROM analytics_events
+          WHERE user_id IS NOT NULL AND created_at >= NOW() - INTERVAL '30 days'
+          GROUP BY DATE(created_at) ORDER BY date DESC LIMIT 30
+        `),
+        pool.query(`
+          SELECT event, COUNT(*) as count
+          FROM analytics_events
+          WHERE created_at >= NOW() - INTERVAL '7 days'
+          GROUP BY event ORDER BY count DESC LIMIT 10
+        `),
+        pool.query(`
+          SELECT platform, COUNT(*) as count
+          FROM analytics_events
+          WHERE platform IS NOT NULL
+          GROUP BY platform
+        `),
+        pool.query(`
+          SELECT ae.event, ae.user_id, u.username, ae.properties, ae.platform, ae.created_at
+          FROM analytics_events ae
+          LEFT JOIN users u ON u.user_id = ae.user_id
+          ORDER BY ae.created_at DESC LIMIT 50
+        `),
+      ]);
+      res.json({
+        eventCounts: eventCounts.rows,
+        dailyActive: dailyActive.rows,
+        topEventsThisWeek: topEvents.rows,
+        platformSplit: platformSplit.rows,
+        recentEvents: recentEvents.rows,
+      });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch analytics" });
+    }
+  });
+
   // ── Admin ─────────────────────────────────────────────────────────────────
 
   const ADMIN_USER_ID = "17731833451956z1lxkg";

@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useApp } from "@/context/AppContext";
 import { apiRequest, getApiUrl } from "@/lib/query-client";
 import Colors from "@/constants/colors";
+import { track } from "@/lib/analytics";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -105,6 +106,7 @@ export default function DMScreen() {
     },
     onSuccess: () => {
       setDraft("");
+      track("dm_sent", myId, { receiverId: partnerId });
       qc.invalidateQueries({ queryKey: ["/api/dms", myId, partnerId] });
       qc.invalidateQueries({ queryKey: ["/api/dms/conversations", myId] });
     },

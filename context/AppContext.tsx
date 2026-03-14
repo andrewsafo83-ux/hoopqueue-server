@@ -13,6 +13,7 @@ import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 import { Court, SkillLevel, US_STATES } from "@/data/courts";
 import { apiRequest, getApiUrl } from "@/lib/query-client";
+import { track } from "@/lib/analytics";
 
 export { Court, US_STATES };
 
@@ -147,8 +148,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           fetchCourtsFromApi(),
         ]);
 
-        if (profileStr) setProfile(JSON.parse(profileStr));
+        const parsedProfile = profileStr ? JSON.parse(profileStr) : null;
+        if (parsedProfile) setProfile(parsedProfile);
         if (waitlistsStr) setWaitlists(JSON.parse(waitlistsStr));
+        track("app_open", parsedProfile?.userId, { platform: Platform.OS });
 
         const courtList = fetchedCourts.length > 0 ? fetchedCourts : [];
         setAllCourts(courtList);
@@ -261,6 +264,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (res.status === 409) {
         throw new Error(body.message || "Account error");
       }
+    } else {
+      track("profile_saved", userId, { skillLevel });
     }
   }, [profile]);
 
@@ -346,6 +351,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         position: r.position,
       }));
       setWaitlists((prev) => ({ ...prev, [courtId]: entries }));
+      track("waitlist_join", profile.userId, { courtId, position: entries.find((e) => e.userId === profile.userId)?.position });
       return { ok: true };
     } catch (err) {
       console.warn("Join waitlist error:", err);
@@ -368,6 +374,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           .map((e, i) => ({ ...e, position: i + 1 }));
         return { ...prev, [courtId]: filtered };
       });
+      track("waitlist_leave", profile.userId, { courtId });
     } catch (err) {
       console.warn("Leave waitlist error:", err);
     }
