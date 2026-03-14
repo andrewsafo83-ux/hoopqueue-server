@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useApp } from "@/context/AppContext";
+import { usePlayerCounts } from "@/context/PlayerCountsContext";
 import { Court } from "@/data/courts";
 import Colors from "@/constants/colors";
 
@@ -125,11 +126,12 @@ function CityPicker({
 export default function CourtMap() {
   const insets = useSafeAreaInsets();
   const {
-    courts, playerCounts, courtFilter, setCourtFilter,
+    courts, courtFilter, setCourtFilter,
     cityFilter, setCityFilter, availableCities,
     stateFilter, setStateFilter, availableStates,
     allCourts,
   } = useApp();
+  const { playerCounts } = usePlayerCounts();
   const [showStatePicker, setShowStatePicker] = useState(false);
   const [showCityPicker, setShowCityPicker] = useState(false);
   const activeCourts = courts.filter((c) => (playerCounts[c.id] ?? 0) > 0).length;

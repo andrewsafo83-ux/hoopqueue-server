@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useApp } from "@/context/AppContext";
+import { usePlayerCounts } from "@/context/PlayerCountsContext";
 import { Court } from "@/data/courts";
 import Colors from "@/constants/colors";
 
@@ -132,13 +133,13 @@ export default function NearbyScreen() {
   const insets = useSafeAreaInsets();
   const {
     allCourts,
-    playerCounts,
     courtFilter,
     setCourtFilter,
     userLocation,
     getDistanceMiles,
     refetchCourts,
   } = useApp();
+  const { playerCounts } = usePlayerCounts();
   const [refreshing, setRefreshing] = useState(false);
 
   const onRefresh = useCallback(async () => {
