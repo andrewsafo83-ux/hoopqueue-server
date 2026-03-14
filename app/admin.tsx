@@ -208,7 +208,7 @@ export default function AdminScreen() {
     dailyActive: { date: string; dau: string }[];
     topEventsThisWeek: { event: string; count: string }[];
     platformSplit: { platform: string; count: string }[];
-    recentEvents: { event: string; user_id: string; username: string; properties: any; platform: string; created_at: string }[];
+    recentEvents: { event: string; user_id: string; username: string; email: string; properties: any; platform: string; created_at: string }[];
   }>({
     queryKey: ["/api/admin/analytics", profile?.userId],
     enabled: profile?.userId === ADMIN_USER_ID && activeTab === "analytics",
@@ -598,7 +598,7 @@ export default function AdminScreen() {
                     <View style={styles.monoRow}>
                       <View style={{ flex: 1 }}>
                         <Text style={[styles.monoText, { fontSize: 13 }]}>{e.event}</Text>
-                        <Text style={styles.userEmail}>{e.username || e.user_id || "anonymous"} · {e.platform}</Text>
+                        <Text style={styles.userEmail}>{e.username || e.user_id || "anonymous"}{e.email ? ` · ${e.email}` : ""} · {e.platform}</Text>
                       </View>
                       <Text style={styles.userTime}>{timeAgo(e.created_at)}</Text>
                     </View>

@@ -291,9 +291,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const { event, userId, properties, platform } = req.body;
     if (!event) return res.status(400).json({ message: "event required" });
     try {
+      let username: string | null = null;
+      let email: string | null = null;
+      if (userId) {
+        const userRow = await pool.query(
+          "SELECT username, email FROM users WHERE user_id = $1 LIMIT 1",
+          [userId]
+        );
+        if (userRow.rows.length > 0) {
+          username = userRow.rows[0].username ?? null;
+          email = userRow.rows[0].email ?? null;
+        }
+      }
       await pool.query(
-        "INSERT INTO analytics_events (event, user_id, properties, platform) VALUES ($1, $2, $3, $4)",
-        [event, userId ?? null, JSON.stringify(properties ?? {}), platform ?? null]
+        "INSERT INTO analytics_events (event, user_id, username, email, properties, platform) VALUES ($1, $2, $3, $4, $5, $6)",
+        [event, userId ?? null, username, email, JSON.stringify(properties ?? {}), platform ?? null]
       );
       res.status(201).json({ ok: true });
     } catch {
@@ -331,7 +343,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           GROUP BY platform
         `),
         pool.query(`
-          SELECT ae.event, ae.user_id, u.username, ae.properties, ae.platform, ae.created_at
+          SELECT ae.event, ae.user_id,
+            COALESCE(ae.username, u.username) AS username,
+            COALESCE(ae.email, u.email) AS email,
+            ae.properties, ae.platform, ae.created_at
           FROM analytics_events ae
           LEFT JOIN users u ON u.user_id = ae.user_id
           ORDER BY ae.created_at DESC LIMIT 50
