@@ -8,8 +8,6 @@ import {
   TouchableOpacity,
   TextInput,
   FlatList,
-  Image,
-  Alert,
   Platform,
   Modal,
 } from "react-native";
@@ -181,7 +179,7 @@ export default function AdminScreen() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selectedUser, setSelectedUser] = useState<UserRow | null>(null);
-  const [activeTab, setActiveTab] = useState<"overview" | "users" | "analytics" | "posts">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "users" | "analytics">("overview");
   const topPad = insets.top + (Platform.OS === "web" ? 67 : 0);
 
   const statsQuery = useQuery<AdminStats>({
@@ -223,62 +221,6 @@ export default function AdminScreen() {
     },
     refetchInterval: 30000,
   });
-
-  interface AdminPost {
-    id: string; userId: string; username: string;
-    imageUrl: string | null; imageBase64: string | null;
-    caption: string | null; courtName: string | null;
-    createdAt: string; deletedAt: string | null; deletedBy: string | null;
-    likeCount: number; commentCount: number;
-  }
-
-  const postsQuery = useQuery<AdminPost[]>({
-    queryKey: ["/api/admin/posts", profile?.userId],
-    enabled: profile?.userId === ADMIN_USER_ID && activeTab === "posts",
-    queryFn: async () => {
-      const url = new URL("/api/admin/posts", getApiUrl());
-      url.searchParams.set("userId", profile!.userId);
-      const res = await fetch(url.toString());
-      if (!res.ok) throw new Error("Failed");
-      return res.json();
-    },
-  });
-
-  async function handleRestorePost(postId: string) {
-    try {
-      const url = new URL(`/api/admin/posts/${postId}/restore`, getApiUrl());
-      await fetch(url.toString(), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: profile!.userId }),
-      });
-      postsQuery.refetch();
-    } catch {
-      Alert.alert("Error", "Could not restore post.");
-    }
-  }
-
-  async function handleDeletePost(postId: string) {
-    Alert.alert("Delete Post", "Soft-delete this post? You can restore it later.", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete", style: "destructive",
-        onPress: async () => {
-          try {
-            const url = new URL(`/api/posts/${postId}`, getApiUrl());
-            await fetch(url.toString(), {
-              method: "DELETE",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ userId: profile!.userId }),
-            });
-            postsQuery.refetch();
-          } catch {
-            Alert.alert("Error", "Could not delete post.");
-          }
-        },
-      },
-    ]);
-  }
 
   const handleSearchChange = useCallback((text: string) => {
     setSearch(text);
@@ -333,12 +275,6 @@ export default function AdminScreen() {
           onPress={() => setActiveTab("analytics")}
         >
           <Text style={[styles.tabText, activeTab === "analytics" && styles.tabTextActive]}>Analytics</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === "posts" && styles.tabActive]}
-          onPress={() => setActiveTab("posts")}
-        >
-          <Text style={[styles.tabText, activeTab === "posts" && styles.tabTextActive]}>Posts</Text>
         </TouchableOpacity>
       </View>
 
@@ -677,57 +613,6 @@ export default function AdminScreen() {
             </View>
           )}
         </ScrollView>
-      ) : (
-        /* Posts Tab */
-        <FlatList
-          style={styles.scroll}
-          contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 40 }]}
-          data={postsQuery.data ?? []}
-          keyExtractor={(item) => item.id}
-          refreshControl={<RefreshControl refreshing={!!postsQuery.isFetching} onRefresh={postsQuery.refetch} tintColor={Colors.accent} />}
-          ListEmptyComponent={
-            postsQuery.isLoading
-              ? <View style={styles.center}><Text style={styles.loadingText}>Loading posts...</Text></View>
-              : <View style={styles.center}><Text style={styles.emptyText}>No posts yet</Text></View>
-          }
-          renderItem={({ item: post }) => {
-            const isDeleted = !!post.deletedAt;
-            const imgSrc = post.imageUrl ?? (post.imageBase64 ? `data:image/jpeg;base64,${post.imageBase64}` : null);
-            return (
-              <View style={[styles.postCard, isDeleted && styles.postCardDeleted]}>
-                <View style={styles.postHeader}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.postUsername}>{post.username}</Text>
-                    <Text style={styles.userEmail}>
-                      {post.courtName ? `📍 ${post.courtName} · ` : ""}{timeAgo(post.createdAt)}
-                    </Text>
-                  </View>
-                  {isDeleted ? (
-                    <TouchableOpacity style={styles.restoreBtn} onPress={() => handleRestorePost(post.id)}>
-                      <Text style={styles.restoreBtnText}>Restore</Text>
-                    </TouchableOpacity>
-                  ) : (
-                    <TouchableOpacity onPress={() => handleDeletePost(post.id)}>
-                      <Ionicons name="trash-outline" size={18} color={Colors.error ?? "#FF6B6B"} />
-                    </TouchableOpacity>
-                  )}
-                </View>
-                {imgSrc && (
-                  <Image source={{ uri: imgSrc }} style={styles.postThumb} resizeMode="cover" />
-                )}
-                {post.caption ? <Text style={styles.postCaption}>{post.caption}</Text> : null}
-                <View style={styles.postStats}>
-                  <Text style={styles.userEmail}>♥ {post.likeCount}  💬 {post.commentCount}</Text>
-                  {isDeleted && (
-                    <View style={styles.deletedBadge}>
-                      <Text style={styles.deletedBadgeText}>DELETED</Text>
-                    </View>
-                  )}
-                </View>
-              </View>
-            );
-          }}
-        />
       )}
 
       <UserDetailModal user={selectedUser} visible={!!selectedUser} onClose={() => setSelectedUser(null)} />
@@ -889,26 +774,4 @@ const styles = StyleSheet.create({
   activityValue: { fontFamily: "Inter_700Bold", fontSize: 18 },
   activityLabel: { fontFamily: "Inter_400Regular", fontSize: 10, color: Colors.textSecondary, marginTop: 2 },
   userIdText: { fontFamily: "Inter_400Regular", fontSize: 11, color: Colors.textSecondary },
-
-  // Posts tab
-  postCard: {
-    backgroundColor: Colors.card, borderRadius: 16, borderWidth: 1,
-    borderColor: Colors.border, marginBottom: 12, overflow: "hidden",
-  },
-  postCardDeleted: { opacity: 0.6, borderColor: "#FF6B6B44" },
-  postHeader: { flexDirection: "row", alignItems: "center", padding: 12, gap: 8 },
-  postUsername: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: Colors.text },
-  postThumb: { width: "100%", height: 200 },
-  postCaption: { fontFamily: "Inter_400Regular", fontSize: 13, color: Colors.text, padding: 12, paddingTop: 8 },
-  postStats: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 12, paddingBottom: 12 },
-  deletedBadge: {
-    backgroundColor: "#FF6B6B22", borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3,
-    borderWidth: 1, borderColor: "#FF6B6B55",
-  },
-  deletedBadgeText: { fontFamily: "Inter_700Bold", fontSize: 10, color: "#FF6B6B", letterSpacing: 0.5 },
-  restoreBtn: {
-    backgroundColor: Colors.accentDim, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6,
-    borderWidth: 1, borderColor: Colors.accent + "40",
-  },
-  restoreBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: Colors.accent },
 });
