@@ -1,59 +1,58 @@
-# HoopQueue — Basketball Court Live Run App
+# HoopQueue — Basketball Court Finder App
 
 ## Overview
-A mobile app showing live basketball runs at parks and gyms across California. Users see real-time player counts, join waitlists, post in a live chat feed, and browse 60+ courts by city and type.
+A mobile app for finding basketball courts across the entire United States. Users discover real courts from OpenStreetMap data, see real-time player check-ins, post in a social feed, DM friends, and browse 1,443 courts by state and city.
 
 ## Tech Stack
 - **Frontend**: Expo / React Native (Expo Router file-based routing)
 - **Backend**: Express.js (Node.js/TypeScript)
-- **Database**: PostgreSQL (Replit built-in) — users table with name, email, skill level
+- **Database**: PostgreSQL (Supabase — session pooler, IPv4 compatible)
 - **Local Persistence**: AsyncStorage (waitlists, player counts, profile cache)
 - **Map**: react-native-maps@1.18.0 (Expo Go compatible, platform-split)
 
 ## Architecture
-- `app/(tabs)/` — Four tabs: Map, Courts, Messages, Profile
-- `app/court/[id].tsx` — Court detail + waitlist + live chat feed
+- `app/(tabs)/` — Four tabs: Map, Courts, Feed, Profile
+- `app/court/[id].tsx` — Court detail + waitlist + live chat
 - `app/dm/[userId].tsx` — DM conversation thread (friends only)
 - `context/AppContext.tsx` — Shared state: courts, waitlists, player counts, profile
-- `data/courts.ts` — 70+ courts across CA including 24 Hour Fitness gyms; CITIES array
-- `server/routes.ts` — REST API: users, friends, DMs (PostgreSQL), court messages (in-memory)
+- `server/ca-courts.ts` — 169 real California courts (OpenStreetMap)
+- `server/us-courts.ts` — 1,274 real courts from all 50 states + DC (OpenStreetMap)
+- `server/routes.ts` — REST API + auto-seeding logic
 - `constants/colors.ts` — Dark theme with orange accent
 
-## Database Schema
-- **users**: `id`, `user_id` (unique), `username`, `email` (unique), `skill_level`, `created_at`, `updated_at`
-- **friendships**: `id`, `requester_id`, `addressee_id`, `status` (pending/accepted), `created_at`, `updated_at`
-- **direct_messages**: `id`, `sender_id`, `receiver_id`, `text`, `created_at`
+## Court Data
+- **Total**: 1,443 real basketball courts from OpenStreetMap (zero fake/generated courts)
+- **Coverage**: All 51 jurisdictions (50 states + DC)
+- **Player counts**: All set to 0 — only real check-ins drive player counts
+- **Top states**: CA (169), NY (101), NJ (99), TX (94), FL (84)
+- Seeding: on startup, server auto-seeds CA courts (checks for `venice-beach` ID),
+  then inserts all US courts if no non-CA court exists
+
+## Database Schema (Supabase)
+- **courts**: real OpenStreetMap courts for all US states
+- **users**: `id`, `user_id` (unique), `username`, `email`, `skill_level`, `created_at`
+- **friendships**: `requester_id`, `addressee_id`, `status` (pending/accepted)
+- **direct_messages**: `sender_id`, `receiver_id`, `text`, `created_at`
 - **dm_read_receipts**: `user_id`, `partner_id`, `last_read`
+- **posts**: social feed posts with optional images
+- **post_comments**: comments on posts
+- **post_likes**: likes on posts
+
+## Database Connection
+- Supabase session pooler: `aws-0-us-west-2.pooler.supabase.com:5432`
+- Must use pooler (not direct) — Replit is IPv4 only
+- Set via `DATABASE_URL` secret in Replit environment
 
 ## Features
-- Interactive dark map with court markers (mobile native; list fallback on web)
-- Real-time player count updates (simulated — only for courts already active)
-- City + indoor/outdoor filtering
-- Join/leave waitlists with position tracking
-- Live Feed per court: post updates, quick-tap chips, 3-second polling
-- Profanity filter on all chat messages and DMs (server-side)
-- **Friends + DM system**: search players by username, send/accept friend requests, DM accepted friends only; pending requests shown as badge on tab + banner in Messages screen; long-press friend to unfriend
-- User profile with name, **email** (stored in PostgreSQL), and skill level
-- Liquid glass tab bar on iOS 26+
-- Custom AI-generated app icon and splash screen
+- Interactive dark map with real court markers (mobile native; list fallback on web)
+- Real player check-in counts (no fake data)
+- Social feed with photo sharing, likes, comments
+- Private DMs between friends
+- Friend system (send/accept requests)
+- State + city court browsing
+- Court detail with live chat
 
-## Color Palette
-- Background: #0A0A0F
-- Card: #141420
-- Accent (orange): #FF6B00
-- Text: #FFFFFF
-- Status: #22C55E (green), #EF4444 (red)
-
-## App Store Metadata (app.json)
-- iOS bundle ID: `com.hoopqueue.app`
-- Android package: `com.hoopqueue.app`
-- Version: 1.0.0 / Build 1
-
-## Workflows
-- `Start Backend`: Express on port 5000
-- `Start Frontend`: Expo Metro on port 8081
-
-## Key Files
-- `metro.config.js` — Blocks `.local` directory from Metro watcher (prevents crash from temp files)
-- `components/CourtMap.native.tsx` — Native map
-- `components/CourtMap.web.tsx` — Web fallback list
+## Build
+- `npm run server:build` — Builds production server via esbuild → `server_dist/index.js`
+- `npm run server:dev` — Dev server via tsx
+- `npm run expo:dev` — Expo dev server on port 8081
