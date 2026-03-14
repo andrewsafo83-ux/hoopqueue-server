@@ -33,6 +33,7 @@ const STORAGE_KEYS = {
   PROFILE: "rnl_profile_v2",
   WAITLISTS: "rnl_waitlists",
   PLAYER_COUNTS: "rnl_player_counts",
+  DEVICE_ID: "rnl_device_id",
 };
 
 export interface UserProfile {
@@ -72,7 +73,7 @@ interface AppContextValue {
   updateAvatar: (base64: string) => Promise<void>;
   refetchCourts: () => Promise<void>;
   fetchCourtWaitlist: (courtId: string) => Promise<void>;
-  joinWaitlist: (courtId: string) => Promise<void>;
+  joinWaitlist: (courtId: string) => Promise<{ ok: boolean; error?: string; currentCourtId?: string }>;
   leaveWaitlist: (courtId: string) => Promise<void>;
   isOnWaitlist: (courtId: string) => boolean;
   getMyPosition: (courtId: string) => number | null;
@@ -91,6 +92,18 @@ const AppContext = createContext<AppContextValue | null>(null);
 
 export function generateUserId(): string {
   return Date.now().toString() + Math.random().toString(36).substring(2, 9);
+}
+
+async function getOrCreateDeviceId(): Promise<string> {
+  try {
+    const stored = await AsyncStorage.getItem(STORAGE_KEYS.DEVICE_ID);
+    if (stored) return stored;
+    const newId = "dev_" + Date.now().toString(36) + Math.random().toString(36).substring(2, 11);
+    await AsyncStorage.setItem(STORAGE_KEYS.DEVICE_ID, newId);
+    return newId;
+  } catch {
+    return "dev_" + Math.random().toString(36).substring(2, 15);
+  }
 }
 
 function seedPlayerCounts(courtList: Court[]): Record<string, number> {
@@ -234,10 +247,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const newProfile: UserProfile = { userId, username, handle: handle || undefined, email, phone: phone || undefined, skillLevel };
     setProfile(newProfile);
     await AsyncStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(newProfile));
-    try {
-      await apiRequest("POST", "/api/users", { userId, username, handle: handle || undefined, email, phone: phone || undefined, skillLevel });
-    } catch (err) {
-      console.warn("Could not sync profile to server:", err);
+    const deviceId = await getOrCreateDeviceId();
+    const res = await fetch(new URL("/api/users", getApiUrl()).toString(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, username, handle: handle || undefined, email, phone: phone || undefined, skillLevel, deviceId }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      if (body.code === "device_exists") {
+        throw new Error("DEVICE_EXISTS");
+      }
+      if (res.status === 409) {
+        throw new Error(body.message || "Account error");
+      }
     }
   }, [profile]);
 
@@ -299,8 +322,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const joinWaitlist = useCallback(async (courtId: string) => {
-    if (!profile) return;
+  const joinWaitlist = useCallback(async (courtId: string): Promise<{ ok: boolean; error?: string; currentCourtId?: string }> => {
+    if (!profile) return { ok: false, error: "No profile" };
     try {
       const url = new URL(`/api/waitlists/${courtId}/join`, getApiUrl());
       const res = await fetch(url.toString(), {
@@ -308,7 +331,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId: profile.userId, username: profile.username, skillLevel: profile.skillLevel }),
       });
-      if (!res.ok) return;
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        return { ok: false, error: body.message ?? "Could not join waitlist", currentCourtId: body.currentCourtId };
+      }
       const rows: Array<{ userId: string; username: string; skillLevel: string; timestamp: string; position: number }> = await res.json();
       const entries: WaitlistEntry[] = rows.map((r) => ({
         waitId: r.userId,
@@ -320,8 +346,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         position: r.position,
       }));
       setWaitlists((prev) => ({ ...prev, [courtId]: entries }));
+      return { ok: true };
     } catch (err) {
       console.warn("Join waitlist error:", err);
+      return { ok: false, error: "Network error" };
     }
   }, [profile]);
 

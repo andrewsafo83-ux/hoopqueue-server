@@ -158,8 +158,12 @@ export default function ProfileScreen() {
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (err: any) {
-      if (err?.message?.includes("409") || err?.message?.includes("email")) {
+      if (err?.message === "DEVICE_EXISTS") {
+        Alert.alert("Account Exists", "An account already exists on this device. Only one account is allowed per device.");
+      } else if (err?.message?.includes("409") || err?.message?.includes("email")) {
         setEmailError("That email is already registered to another account.");
+      } else if (err?.message) {
+        Alert.alert("Error", err.message);
       } else {
         Alert.alert("Error", "Could not save profile. Please try again.");
       }

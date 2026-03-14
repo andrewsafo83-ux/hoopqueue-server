@@ -198,6 +198,79 @@ export async function registerRoutes(app: Express): Promise<Server> {
     )
   `);
 
+  // ── Users table ───────────────────────────────────────────────────────────
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id SERIAL PRIMARY KEY,
+      user_id TEXT UNIQUE NOT NULL,
+      username TEXT NOT NULL,
+      handle TEXT UNIQUE,
+      email TEXT UNIQUE,
+      phone TEXT,
+      skill_level TEXT DEFAULT 'Intermediate',
+      avatar_base64 TEXT,
+      push_token TEXT,
+      device_id TEXT,
+      last_ip TEXT,
+      last_seen_at TIMESTAMP DEFAULT NOW(),
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_base64 TEXT`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS push_token TEXT`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS device_id TEXT`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_ip TEXT`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMP DEFAULT NOW()`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS handle TEXT`);
+
+  // ── Waitlists table ───────────────────────────────────────────────────────
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS waitlists (
+      id SERIAL PRIMARY KEY,
+      court_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      username TEXT NOT NULL,
+      skill_level TEXT DEFAULT 'Intermediate',
+      position INTEGER NOT NULL,
+      joined_at TIMESTAMP DEFAULT NOW(),
+      UNIQUE(court_id, user_id)
+    )
+  `);
+
+  // ── Friendships table ─────────────────────────────────────────────────────
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS friendships (
+      id SERIAL PRIMARY KEY,
+      requester_id TEXT NOT NULL,
+      addressee_id TEXT NOT NULL,
+      status TEXT DEFAULT 'pending',
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW(),
+      UNIQUE(requester_id, addressee_id)
+    )
+  `);
+
+  // ── DMs table ─────────────────────────────────────────────────────────────
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS direct_messages (
+      id SERIAL PRIMARY KEY,
+      sender_id TEXT NOT NULL,
+      receiver_id TEXT NOT NULL,
+      text TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS dm_read_receipts (
+      user_id TEXT NOT NULL,
+      partner_id TEXT NOT NULL,
+      last_read TIMESTAMP DEFAULT NOW(),
+      PRIMARY KEY (user_id, partner_id)
+    )
+  `);
+
   // ── Admin ─────────────────────────────────────────────────────────────────
 
   const ADMIN_USER_ID = "17731833451956z1lxkg";
@@ -209,14 +282,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     try {
       const [
-        totalUsers,
-        skillBreakdown,
-        newToday,
-        newThisWeek,
-        totalFriendships,
-        pendingRequests,
-        totalDMs,
-        recentUsers,
+        totalUsers, skillBreakdown, newToday, newThisWeek,
+        totalFriendships, pendingRequests, totalDMs,
+        totalPosts, totalComments, totalLikes, activeWaitlists, totalCourtsRes, recentUsers,
       ] = await Promise.all([
         pool.query("SELECT COUNT(*) AS count FROM users"),
         pool.query("SELECT skill_level, COUNT(*) AS count FROM users GROUP BY skill_level ORDER BY count DESC"),
@@ -225,7 +293,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         pool.query("SELECT COUNT(*) AS count FROM friendships WHERE status = 'accepted'"),
         pool.query("SELECT COUNT(*) AS count FROM friendships WHERE status = 'pending'"),
         pool.query("SELECT COUNT(*) AS count FROM direct_messages"),
-        pool.query("SELECT username, skill_level, email, created_at FROM users ORDER BY created_at DESC LIMIT 10"),
+        pool.query("SELECT COUNT(*) AS count FROM posts"),
+        pool.query("SELECT COUNT(*) AS count FROM post_comments"),
+        pool.query("SELECT COUNT(*) AS count FROM post_likes"),
+        pool.query("SELECT COUNT(*) AS count FROM waitlists"),
+        pool.query("SELECT COUNT(*) AS count FROM courts"),
+        pool.query(`SELECT user_id, username, skill_level, email, device_id, last_ip, created_at, last_seen_at FROM users ORDER BY created_at DESC LIMIT 20`),
       ]);
       res.json({
         totalUsers: parseInt(totalUsers.rows[0].count),
@@ -235,18 +308,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
         totalFriendships: parseInt(totalFriendships.rows[0].count),
         pendingRequests: parseInt(pendingRequests.rows[0].count),
         totalDMs: parseInt(totalDMs.rows[0].count),
-        totalCourts: 164,
+        totalPosts: parseInt(totalPosts.rows[0].count),
+        totalComments: parseInt(totalComments.rows[0].count),
+        totalLikes: parseInt(totalLikes.rows[0].count),
+        activeWaitlists: parseInt(activeWaitlists.rows[0].count),
+        totalCourts: parseInt(totalCourtsRes.rows[0].count),
         recentUsers: recentUsers.rows,
       });
     } catch (err) {
+      console.error("Admin stats error:", err);
       res.status(500).json({ message: "Failed to fetch stats" });
+    }
+  });
+
+  app.get("/api/admin/all-users", async (req: Request, res: Response) => {
+    const { userId, search, limit, offset } = req.query as Record<string, string>;
+    if (userId !== ADMIN_USER_ID) return res.status(403).json({ message: "Forbidden" });
+    try {
+      const lim = Math.min(parseInt(limit || "50"), 100);
+      const off = parseInt(offset || "0");
+      const searchClause = search ? `AND (u.username ILIKE $3 OR u.email ILIKE $3 OR u.handle ILIKE $3)` : "";
+      const params: any[] = [lim, off, ...(search ? [`%${search}%`] : [])];
+      const result = await pool.query(
+        `SELECT u.user_id, u.username, u.handle, u.email, u.phone, u.skill_level,
+                u.device_id, u.last_ip, u.created_at, u.last_seen_at,
+                COALESCE(p.post_count, 0) AS post_count,
+                COALESCE(c.comment_count, 0) AS comment_count,
+                COALESCE(l.like_count, 0) AS like_count,
+                COALESCE(d.dm_count, 0) AS dm_count,
+                COALESCE(w.waitlist_count, 0) AS waitlist_count
+         FROM users u
+         LEFT JOIN (SELECT user_id, COUNT(*) AS post_count FROM posts GROUP BY user_id) p ON p.user_id = u.user_id
+         LEFT JOIN (SELECT user_id, COUNT(*) AS comment_count FROM post_comments GROUP BY user_id) c ON c.user_id = u.user_id
+         LEFT JOIN (SELECT user_id, COUNT(*) AS like_count FROM post_likes GROUP BY user_id) l ON l.user_id = u.user_id
+         LEFT JOIN (SELECT sender_id AS user_id, COUNT(*) AS dm_count FROM direct_messages GROUP BY sender_id) d ON d.user_id = u.user_id
+         LEFT JOIN (SELECT user_id, COUNT(*) AS waitlist_count FROM waitlists GROUP BY user_id) w ON w.user_id = u.user_id
+         WHERE 1=1 ${searchClause}
+         ORDER BY u.created_at DESC
+         LIMIT $1 OFFSET $2`,
+        params
+      );
+      const total = await pool.query(`SELECT COUNT(*) AS count FROM users ${search ? "WHERE username ILIKE $1 OR email ILIKE $1 OR handle ILIKE $1" : ""}`, search ? [`%${search}%`] : []);
+      res.json({ users: result.rows, total: parseInt(total.rows[0].count) });
+    } catch (err) {
+      console.error("Admin all-users error:", err);
+      res.status(500).json({ message: "Failed to fetch users" });
     }
   });
 
   // ── Users ──────────────────────────────────────────────────────────────────
 
   app.post("/api/users", async (req: Request, res: Response) => {
-    const { userId, username, handle, email, phone, skillLevel } = req.body;
+    const { userId, username, handle, email, phone, skillLevel, deviceId } = req.body;
+    const clientIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket.remoteAddress || "unknown";
     if (!userId || !username || !email) {
       return res.status(400).json({ message: "userId, username, and email are required" });
     }
@@ -266,14 +380,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     }
     try {
+      // One account per device: if this deviceId is already linked to a DIFFERENT user, block
+      if (deviceId) {
+        const deviceCheck = await pool.query(
+          `SELECT user_id FROM users WHERE device_id = $1 AND user_id != $2 LIMIT 1`,
+          [deviceId, userId]
+        );
+        if (deviceCheck.rows.length > 0) {
+          return res.status(409).json({ message: "An account already exists on this device.", code: "device_exists" });
+        }
+      }
       const result = await pool.query(
-        `INSERT INTO users (user_id, username, handle, email, phone, skill_level, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, NOW())
+        `INSERT INTO users (user_id, username, handle, email, phone, skill_level, device_id, last_ip, last_seen_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
          ON CONFLICT (user_id)
          DO UPDATE SET username = EXCLUDED.username, handle = EXCLUDED.handle, email = EXCLUDED.email,
-           phone = EXCLUDED.phone, skill_level = EXCLUDED.skill_level, updated_at = NOW()
+           phone = EXCLUDED.phone, skill_level = EXCLUDED.skill_level,
+           device_id = COALESCE(EXCLUDED.device_id, users.device_id),
+           last_ip = EXCLUDED.last_ip, last_seen_at = NOW(), updated_at = NOW()
          RETURNING user_id, username, handle, skill_level`,
-        [userId, username.trim(), handle?.trim().toLowerCase() || null, email.trim().toLowerCase(), phone?.trim() || null, skillLevel ?? "Intermediate"]
+        [userId, username.trim(), handle?.trim().toLowerCase() || null, email.trim().toLowerCase(), phone?.trim() || null, skillLevel ?? "Intermediate", deviceId || null, clientIp]
       );
       res.status(200).json(result.rows[0]);
     } catch (err: any) {
@@ -654,6 +780,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const { userId, username, skillLevel } = req.body;
     if (!userId || !username) return res.status(400).json({ message: "userId and username required" });
     try {
+      // One waitlist at a time: check if already on any OTHER court's waitlist
+      const existingWaitlist = await pool.query(
+        `SELECT court_id FROM waitlists WHERE user_id = $1 AND court_id != $2 LIMIT 1`,
+        [userId, courtId]
+      );
+      if (existingWaitlist.rows.length > 0) {
+        return res.status(409).json({
+          message: "You're already on a waitlist. Leave your current waitlist before joining another.",
+          code: "already_on_waitlist",
+          currentCourtId: existingWaitlist.rows[0].court_id,
+        });
+      }
       const countRes = await pool.query(
         `SELECT COUNT(*) AS count FROM waitlists WHERE court_id = $1`,
         [courtId]

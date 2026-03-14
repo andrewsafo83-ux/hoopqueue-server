@@ -390,7 +390,10 @@ export default function CourtDetailScreen() {
       if (onWaitlist) {
         await leaveWaitlist(court!.id);
       } else {
-        await joinWaitlist(court!.id);
+        const result = await joinWaitlist(court!.id);
+        if (!result.ok && result.error) {
+          Alert.alert("Can't Join Waitlist", result.error);
+        }
       }
     } finally {
       setIsJoinLoading(false);
