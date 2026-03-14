@@ -34,7 +34,8 @@ interface Post {
   userId: string;
   username: string;
   avatarBase64: string | null;
-  imageBase64: string;
+  imageBase64: string | null;
+  imageUrl: string | null;
   caption: string | null;
   courtId: string | null;
   courtName: string | null;
@@ -534,7 +535,7 @@ function PostCard({
 
       {/* Image */}
       <Image
-        source={{ uri: `data:image/jpeg;base64,${post.imageBase64}` }}
+        source={{ uri: post.imageUrl ?? `data:image/jpeg;base64,${post.imageBase64}` }}
         style={styles.postImage}
         resizeMode="cover"
       />

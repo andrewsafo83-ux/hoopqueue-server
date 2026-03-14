@@ -77,4 +77,4 @@ ensurePreviewReachable = "/status"
 
 [userenv.shared]
 SUPABASE_URL = "https://ibcbvsiedftmjhezpcna.supabase.co"
-SUPABASE_SERVICE_ROLE_KEY = "sb_secret_qaTx61JhJJENLOjw6wJgBw_Amsy47rs"
+SUPABASE_SERVICE_ROLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImliY2J2c2llZGZ0bWpoZXpwY25hIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MzQ2Mzc2NywiZXhwIjoyMDg5MDM5NzY3fQ.YxSkvxBVsM3HUx9W6a5Gdy8duW8JniNdIMeHppZfUmA"

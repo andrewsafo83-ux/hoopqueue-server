@@ -1460,6 +1460,34 @@ var US_COURTS = [
 
 // server/routes.ts
 var pool = new Pool({ connectionString: process.env.DATABASE_URL });
+var SUPABASE_URL = process.env.SUPABASE_URL ?? "";
+var SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+async function uploadImageToStorage(base64, filename) {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return null;
+  try {
+    const raw = base64.replace(/^data:image\/\w+;base64,/, "");
+    const buffer = Buffer.from(raw, "base64");
+    const uploadUrl = `${SUPABASE_URL}/storage/v1/object/post-images/${filename}`;
+    const res = await fetch(uploadUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        "Content-Type": "image/jpeg",
+        "x-upsert": "true"
+      },
+      body: buffer
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      console.error("Storage upload failed:", err);
+      return null;
+    }
+    return `${SUPABASE_URL}/storage/v1/object/public/post-images/${filename}`;
+  } catch (e) {
+    console.error("Storage upload error:", e);
+    return null;
+  }
+}
 var PROFANITY_LIST = [
   "fuck",
   "shit",
@@ -2508,6 +2536,7 @@ async function registerRoutes(app2) {
           username: r.username,
           avatarBase64: r.avatar_base64,
           imageBase64: r.image_base64,
+          imageUrl: r.image_url ?? null,
           caption: r.caption,
           courtId: r.court_id,
           courtName: r.court_name,
@@ -2532,12 +2561,13 @@ async function registerRoutes(app2) {
     }
     const id = generateId();
     try {
+      const imageUrl = await uploadImageToStorage(imageBase64, `${id}.jpg`);
       await pool.query(
-        `INSERT INTO posts (id, user_id, username, avatar_base64, image_base64, caption, court_id, court_name)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [id, userId, username, avatarBase64 ?? null, imageBase64, caption ?? null, courtId ?? null, courtName ?? null]
+        `INSERT INTO posts (id, user_id, username, avatar_base64, image_base64, image_url, caption, court_id, court_name)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [id, userId, username, avatarBase64 ?? null, imageUrl ? null : imageBase64, imageUrl, caption ?? null, courtId ?? null, courtName ?? null]
       );
-      res.status(201).json({ id, userId, username, avatarBase64, imageBase64, caption, courtId, courtName, likeCount: 0, commentCount: 0, userLiked: false, createdAt: /* @__PURE__ */ new Date() });
+      res.status(201).json({ id, userId, username, avatarBase64, imageBase64: imageUrl ? null : imageBase64, imageUrl, caption, courtId, courtName, likeCount: 0, commentCount: 0, userLiked: false, createdAt: /* @__PURE__ */ new Date() });
     } catch (err) {
       console.error("Create post error:", err);
       res.status(500).json({ message: "Failed to create post" });
