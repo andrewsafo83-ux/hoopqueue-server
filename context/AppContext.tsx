@@ -14,6 +14,7 @@ import { Platform } from "react-native";
 import { Court, SkillLevel, US_STATES } from "@/data/courts";
 import { apiRequest, getApiUrl } from "@/lib/query-client";
 import { track } from "@/lib/analytics";
+import { PlayerCountsProvider } from "@/context/PlayerCountsContext";
 
 export { Court, US_STATES };
 
@@ -33,7 +34,6 @@ function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): 
 const STORAGE_KEYS = {
   PROFILE: "rnl_profile_v2",
   WAITLISTS: "rnl_waitlists",
-  PLAYER_COUNTS: "rnl_player_counts",
   DEVICE_ID: "rnl_device_id",
 };
 
@@ -67,7 +67,6 @@ interface AppContextValue {
   courts: Court[];
   allCourts: Court[];
   waitlists: Record<string, WaitlistEntry[]>;
-  playerCounts: Record<string, number>;
   isLoaded: boolean;
   userLocation: UserLocation | null;
   updateProfile: (username: string, handle: string, email: string, phone: string, skillLevel: SkillLevel, forceUserId?: string) => Promise<void>;
@@ -107,15 +106,6 @@ async function getOrCreateDeviceId(): Promise<string> {
   }
 }
 
-function seedPlayerCounts(courtList: Court[]): Record<string, number> {
-  const counts: Record<string, number> = {};
-  for (const court of courtList) {
-    const variance = Math.floor(Math.random() * 3) - 1;
-    counts[court.id] = Math.max(0, Math.min(court.maxPlayers, court.basePlayersPlaying + variance));
-  }
-  return counts;
-}
-
 async function fetchCourtsFromApi(): Promise<Court[]> {
   try {
     const url = new URL("/api/courts", getApiUrl());
@@ -130,7 +120,6 @@ async function fetchCourtsFromApi(): Promise<Court[]> {
 export function AppProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [waitlists, setWaitlists] = useState<Record<string, WaitlistEntry[]>>({});
-  const [playerCounts, setPlayerCounts] = useState<Record<string, number>>({});
   const [isLoaded, setIsLoaded] = useState(false);
   const [courtFilter, setCourtFilter] = useState<"all" | "indoor" | "outdoor">("all");
   const [cityFilter, setCityFilter] = useState<string>("All Cities");
@@ -141,10 +130,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     async function loadData() {
       try {
-        const [profileStr, waitlistsStr, countsStr, fetchedCourts] = await Promise.all([
+        const [profileStr, waitlistsStr, fetchedCourts] = await Promise.all([
           AsyncStorage.getItem(STORAGE_KEYS.PROFILE),
           AsyncStorage.getItem(STORAGE_KEYS.WAITLISTS),
-          AsyncStorage.getItem(STORAGE_KEYS.PLAYER_COUNTS),
           fetchCourtsFromApi(),
         ]);
 
@@ -155,23 +143,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         const courtList = fetchedCourts.length > 0 ? fetchedCourts : [];
         setAllCourts(courtList);
-
-        if (countsStr) {
-          const parsed = JSON.parse(countsStr);
-          // Seed any new courts not yet in stored counts
-          const updated = { ...parsed };
-          for (const court of courtList) {
-            if (!(court.id in updated)) {
-              const variance = Math.floor(Math.random() * 3) - 1;
-              updated[court.id] = Math.max(0, Math.min(court.maxPlayers, court.basePlayersPlaying + variance));
-            }
-          }
-          setPlayerCounts(updated);
-        } else {
-          const seeded = seedPlayerCounts(courtList);
-          setPlayerCounts(seeded);
-          await AsyncStorage.setItem(STORAGE_KEYS.PLAYER_COUNTS, JSON.stringify(seeded));
-        }
       } catch (e) {
         console.error("Load error:", e);
       } finally {
@@ -224,27 +195,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     fetchLocation();
   }, []);
 
-  // Simulate activity
-  useEffect(() => {
-    if (allCourts.length === 0) return;
-    const interval = setInterval(() => {
-      setPlayerCounts((prev) => {
-        const updated = { ...prev };
-        const activeCourts = Object.keys(updated).filter((k) => (updated[k] ?? 0) > 0);
-        if (activeCourts.length === 0) return updated;
-        const randomKey = activeCourts[Math.floor(Math.random() * activeCourts.length)];
-        const court = allCourts.find((c) => c.id === randomKey);
-        if (court) {
-          const delta = Math.random() < 0.5 ? 1 : -1;
-          const newVal = Math.max(0, Math.min(court.maxPlayers, (updated[randomKey] ?? 0) + delta));
-          updated[randomKey] = newVal;
-        }
-        return updated;
-      });
-    }, 8000);
-    return () => clearInterval(interval);
-  }, [allCourts]);
-
   const updateProfile = useCallback(async (username: string, handle: string, email: string, phone: string, skillLevel: SkillLevel, forceUserId?: string) => {
     const userId = profile?.userId ?? forceUserId ?? generateUserId();
     const newProfile: UserProfile = { userId, username, handle: handle || undefined, email, phone: phone || undefined, skillLevel };
@@ -273,16 +223,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const fetched = await fetchCourtsFromApi();
     if (fetched.length > 0) {
       setAllCourts(fetched);
-      setPlayerCounts((prev) => {
-        const updated = { ...prev };
-        for (const court of fetched) {
-          if (!(court.id in updated)) {
-            const variance = Math.floor(Math.random() * 3) - 1;
-            updated[court.id] = Math.max(0, Math.min(court.maxPlayers, court.basePlayersPlaying + variance));
-          }
-        }
-        return updated;
-      });
     }
   }, []);
 
@@ -428,7 +368,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     courts,
     allCourts,
     waitlists,
-    playerCounts,
     isLoaded,
     userLocation,
     updateProfile,
@@ -448,9 +387,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setStateFilter,
     availableCities,
     availableStates,
-  }), [profile, courts, allCourts, waitlists, playerCounts, isLoaded, userLocation, updateProfile, updateAvatar, refetchCourts, fetchCourtWaitlist, joinWaitlist, leaveWaitlist, isOnWaitlist, getMyPosition, getDistanceMiles, courtFilter, setCourtFilter, cityFilter, setCityFilter, stateFilter, setStateFilter, availableCities, availableStates]);
+  }), [profile, courts, allCourts, waitlists, isLoaded, userLocation, updateProfile, updateAvatar, refetchCourts, fetchCourtWaitlist, joinWaitlist, leaveWaitlist, isOnWaitlist, getMyPosition, getDistanceMiles, courtFilter, setCourtFilter, cityFilter, setCityFilter, stateFilter, setStateFilter, availableCities, availableStates]);
 
-  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
+  return (
+    <AppContext.Provider value={value}>
+      <PlayerCountsProvider allCourts={allCourts}>
+        {children}
+      </PlayerCountsProvider>
+    </AppContext.Provider>
+  );
 }
 
 export function useApp() {

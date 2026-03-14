@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useApp } from "@/context/AppContext";
+import { usePlayerCounts } from "@/context/PlayerCountsContext";
 import { US_STATES } from "@/data/courts";
 import Colors from "@/constants/colors";
 
@@ -25,7 +26,8 @@ const STATE_EMOJIS: Record<string, string> = {
 
 export default function StatesScreen() {
   const insets = useSafeAreaInsets();
-  const { allCourts, playerCounts, setStateFilter, setCityFilter } = useApp();
+  const { allCourts, setStateFilter, setCityFilter } = useApp();
+  const { playerCounts } = usePlayerCounts();
 
   const stateStats = useMemo(() => {
     const counts: Record<string, number> = {};

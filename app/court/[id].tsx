@@ -19,6 +19,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useApp } from "@/context/AppContext";
+import { usePlayerCounts } from "@/context/PlayerCountsContext";
 import Colors from "@/constants/colors";
 import { apiRequest } from "@/lib/query-client";
 import { track } from "@/lib/analytics";
@@ -279,7 +280,8 @@ export default function CourtDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
   const qc = useQueryClient();
-  const { playerCounts, waitlists, profile, joinWaitlist, leaveWaitlist, isOnWaitlist, getMyPosition, allCourts, fetchCourtWaitlist } = useApp();
+  const { waitlists, profile, joinWaitlist, leaveWaitlist, isOnWaitlist, getMyPosition, allCourts, fetchCourtWaitlist } = useApp();
+  const { playerCounts } = usePlayerCounts();
 
   const [isJoinLoading, setIsJoinLoading] = useState(false);
   const [inputText, setInputText] = useState("");
