@@ -564,7 +564,7 @@ export default function AdminScreen() {
             />
           )}
         </View>
-      ) : (
+      ) : activeTab === "analytics" ? (
         /* Analytics Tab */
         <ScrollView
           style={styles.scroll}
