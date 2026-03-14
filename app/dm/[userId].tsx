@@ -1,9 +1,10 @@
-import React, { useState, useRef, useCallback } from "react";
+import React, { useState, useRef, useCallback, useEffect } from "react";
 import {
   View, Text, StyleSheet, FlatList, TextInput,
-  TouchableOpacity, Platform, KeyboardAvoidingView,
+  TouchableOpacity, Platform,
   ActivityIndicator, Alert,
 } from "react-native";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useLocalSearchParams, useRouter, Stack } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
@@ -118,7 +119,24 @@ export default function DMScreen() {
     sendMessage.mutate(text);
   }, [draft, sendMessage]);
 
-  const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
+  const [webKeyboardHeight, setWebKeyboardHeight] = useState(0);
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    const vv = (window as any).visualViewport;
+    if (!vv) return;
+    const update = () => {
+      const kh = window.innerHeight - vv.height - vv.offsetTop;
+      setWebKeyboardHeight(Math.max(0, kh));
+    };
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+    };
+  }, []);
+
+  const bottomPad = Platform.OS === "web" ? Math.max(34, webKeyboardHeight) : insets.bottom;
   const partnerName = partner?.username ?? "Player";
 
   const renderMessage = ({ item }: { item: DMMessage }) => {
@@ -147,8 +165,8 @@ export default function DMScreen() {
   return (
     <KeyboardAvoidingView
       style={[styles.container, { backgroundColor: Colors.background }]}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
+      behavior="padding"
+      keyboardVerticalOffset={0}
     >
       <Stack.Screen
         options={{
@@ -213,9 +231,10 @@ export default function DMScreen() {
           onChangeText={setDraft}
           placeholder="Message…"
           placeholderTextColor={Colors.textTertiary}
-          multiline
           maxLength={500}
-          returnKeyType="default"
+          returnKeyType="send"
+          onSubmitEditing={handleSend}
+          blurOnSubmit={false}
           testID="dm-input"
         />
         <TouchableOpacity
