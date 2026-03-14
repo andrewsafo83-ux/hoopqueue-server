@@ -54,3 +54,9 @@ id = "Qq7eu7aXpcHw5D6iwCsKo"
 uri = "file://attached_assets/hoopqueue_promo_24s_v2.mp4"
 type = "video"
 title = "HoopQueue Promo - 24s (New)"
+
+[[outputs]]
+id = "3By3B-japzCasvX_ExSci"
+uri = "file://attached_assets/hoopqueue_code.tar.gz"
+type = "unspecified"
+title = "HoopQueue - Full Source Code"
