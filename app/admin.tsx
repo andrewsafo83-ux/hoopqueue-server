@@ -623,7 +623,7 @@ export default function AdminScreen() {
             </View>
           )}
         </ScrollView>
-      )}
+      ) : null}
 
       <UserDetailModal user={selectedUser} visible={!!selectedUser} onClose={() => setSelectedUser(null)} />
     </View>
