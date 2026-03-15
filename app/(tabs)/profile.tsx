@@ -77,6 +77,19 @@ export default function ProfileScreen() {
   });
   const isAdmin = adminCheckQuery.data?.isAdmin ?? false;
 
+  const followStatsQuery = useQuery<{ followers: number; following: number }>({
+    queryKey: ["/api/users", profile?.userId, "follow-stats"],
+    enabled: !!profile?.userId,
+    queryFn: async () => {
+      const url = new URL(`/api/users/${profile!.userId}/follow-stats`, getApiUrl());
+      const res = await fetch(url.toString());
+      return res.json();
+    },
+    staleTime: 30000,
+  });
+  const followers = followStatsQuery.data?.followers ?? 0;
+  const following = followStatsQuery.data?.following ?? 0;
+
   function handleSecretTap() {
     adminTapCount.current += 1;
     if (adminTapTimer.current) clearTimeout(adminTapTimer.current);
@@ -267,6 +280,16 @@ export default function ProfileScreen() {
       {profile && (
         <View style={styles.statsRow}>
           <View style={styles.statBox}>
+            <Text style={styles.statValue}>{followers}</Text>
+            <Text style={styles.statKey}>Followers</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statBox}>
+            <Text style={styles.statValue}>{following}</Text>
+            <Text style={styles.statKey}>Following</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statBox}>
             <Text style={styles.statValue}>{myWaitlists}</Text>
             <Text style={styles.statKey}>Queued</Text>
           </View>
@@ -274,13 +297,6 @@ export default function ProfileScreen() {
           <View style={styles.statBox}>
             <Text style={styles.statValue}>{Object.keys(waitlists).length}</Text>
             <Text style={styles.statKey}>Courts</Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statBox}>
-            <Text style={[styles.statValue, { color: SKILL_COLORS[profile.skillLevel] }]}>
-              {profile.skillLevel.charAt(0)}
-            </Text>
-            <Text style={styles.statKey}>Level</Text>
           </View>
         </View>
       )}

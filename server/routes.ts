@@ -278,6 +278,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     )
   `);
 
+  // ── Follows table ─────────────────────────────────────────────────────────
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS follows (
+      id SERIAL PRIMARY KEY,
+      follower_id TEXT NOT NULL,
+      following_id TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT NOW(),
+      UNIQUE(follower_id, following_id)
+    )
+  `);
+
   // ── Friendships table ─────────────────────────────────────────────────────
   await pool.query(`
     CREATE TABLE IF NOT EXISTS friendships (
@@ -652,6 +663,72 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ avatar_base64: result.rows[0].avatar_base64 ?? null });
     } catch (err) {
       console.error("Avatar fetch error:", err);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // ── Follows ────────────────────────────────────────────────────────────────
+
+  // Get follower/following counts (+ optional isFollowing for a viewer)
+  app.get("/api/users/:userId/follow-stats", async (req: Request, res: Response) => {
+    const { userId } = req.params;
+    const { viewerId } = req.query as { viewerId?: string };
+    try {
+      const [followersResult, followingResult] = await Promise.all([
+        pool.query(`SELECT COUNT(*) FROM follows WHERE following_id = $1`, [userId]),
+        pool.query(`SELECT COUNT(*) FROM follows WHERE follower_id = $1`, [userId]),
+      ]);
+      let isFollowing = false;
+      if (viewerId && viewerId !== userId) {
+        const check = await pool.query(
+          `SELECT 1 FROM follows WHERE follower_id = $1 AND following_id = $2`,
+          [viewerId, userId]
+        );
+        isFollowing = check.rows.length > 0;
+      }
+      res.json({
+        followers: parseInt(followersResult.rows[0].count, 10),
+        following: parseInt(followingResult.rows[0].count, 10),
+        isFollowing,
+      });
+    } catch (err) {
+      console.error("Follow stats error:", err);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Follow a user
+  app.post("/api/users/:userId/follow", async (req: Request, res: Response) => {
+    const { userId } = req.params;
+    const { followerId } = req.body;
+    if (!followerId || followerId === userId) {
+      return res.status(400).json({ message: "Invalid request" });
+    }
+    try {
+      await pool.query(
+        `INSERT INTO follows (follower_id, following_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+        [followerId, userId]
+      );
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("Follow error:", err);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Unfollow a user
+  app.delete("/api/users/:userId/follow", async (req: Request, res: Response) => {
+    const { userId } = req.params;
+    const { followerId } = req.body;
+    if (!followerId) return res.status(400).json({ message: "Missing followerId" });
+    try {
+      await pool.query(
+        `DELETE FROM follows WHERE follower_id = $1 AND following_id = $2`,
+        [followerId, userId]
+      );
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("Unfollow error:", err);
       res.status(500).json({ message: "Server error" });
     }
   });
