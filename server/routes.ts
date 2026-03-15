@@ -398,7 +398,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ── Admin ─────────────────────────────────────────────────────────────────
 
-  const ADMIN_USER_ID = "17734724774840shljhn";
+  const ADMIN_USER_ID = process.env.ADMIN_USER_ID ?? "";
+
+  app.get("/api/admin/check", async (req: Request, res: Response) => {
+    const { userId } = req.query as { userId: string };
+    res.json({ isAdmin: !!ADMIN_USER_ID && userId === ADMIN_USER_ID });
+  });
 
   app.get("/api/admin/stats", async (req: Request, res: Response) => {
     const { userId } = req.query as { userId: string };

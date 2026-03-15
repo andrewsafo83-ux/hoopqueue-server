@@ -17,12 +17,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import { useQuery } from "@tanstack/react-query";
 import { useApp, generateUserId } from "@/context/AppContext";
 import { SKILL_LEVELS, SkillLevel } from "@/data/courts";
 import Colors from "@/constants/colors";
 import { getApiUrl } from "@/lib/query-client";
-
-const ADMIN_USER_ID = "17734724774840shljhn";
 
 const SKILL_DESCRIPTIONS: Record<SkillLevel, string> = {
   Beginner: "Just learning the game",
@@ -65,11 +64,23 @@ export default function ProfileScreen() {
   const adminTapCount = useRef(0);
   const adminTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const adminCheckQuery = useQuery<{ isAdmin: boolean }>({
+    queryKey: ["/api/admin/check", profile?.userId],
+    enabled: !!profile?.userId,
+    queryFn: async () => {
+      const url = new URL("/api/admin/check", getApiUrl());
+      url.searchParams.set("userId", profile!.userId);
+      const res = await fetch(url.toString());
+      return res.json();
+    },
+  });
+  const isAdmin = adminCheckQuery.data?.isAdmin ?? false;
+
   function handleSecretTap() {
     adminTapCount.current += 1;
     if (adminTapTimer.current) clearTimeout(adminTapTimer.current);
     adminTapTimer.current = setTimeout(() => { adminTapCount.current = 0; }, 2000);
-    if (adminTapCount.current >= 7 && profile?.userId === ADMIN_USER_ID) {
+    if (adminTapCount.current >= 7 && isAdmin) {
       adminTapCount.current = 0;
       if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.push("/admin");

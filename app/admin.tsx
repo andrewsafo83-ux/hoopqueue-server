@@ -19,8 +19,6 @@ import { useApp } from "@/context/AppContext";
 import Colors from "@/constants/colors";
 import { getApiUrl } from "@/lib/query-client";
 
-const ADMIN_USER_ID = "17734724774840shljhn";
-
 const SKILL_COLORS: Record<string, string> = {
   Beginner: "#60A5FA",
   Intermediate: Colors.green,
@@ -182,15 +180,27 @@ export default function AdminScreen() {
   const [activeTab, setActiveTab] = useState<"overview" | "users" | "analytics">("overview");
   const topPad = insets.top + (Platform.OS === "web" ? 67 : 0);
 
+  const adminCheckQuery = useQuery<{ isAdmin: boolean }>({
+    queryKey: ["/api/admin/check", profile?.userId],
+    enabled: !!profile?.userId,
+    queryFn: async () => {
+      const url = new URL("/api/admin/check", getApiUrl());
+      url.searchParams.set("userId", profile!.userId);
+      const res = await fetch(url.toString());
+      return res.json();
+    },
+  });
+  const isAdmin = adminCheckQuery.data?.isAdmin ?? false;
+
   const statsQuery = useQuery<AdminStats>({
     queryKey: ["/api/admin/stats", profile?.userId],
-    enabled: profile?.userId === ADMIN_USER_ID,
+    enabled: isAdmin,
     refetchInterval: 30000,
   });
 
   const usersQuery = useQuery<AllUsersResponse>({
     queryKey: ["/api/admin/all-users", profile?.userId, debouncedSearch],
-    enabled: profile?.userId === ADMIN_USER_ID && activeTab === "users",
+    enabled: isAdmin && activeTab === "users",
     queryFn: async () => {
       const url = new URL("/api/admin/all-users", getApiUrl());
       url.searchParams.set("userId", profile!.userId);
@@ -211,7 +221,7 @@ export default function AdminScreen() {
     recentEvents: { event: string; user_id: string; username: string; email: string; properties: any; platform: string; created_at: string }[];
   }>({
     queryKey: ["/api/admin/analytics", profile?.userId],
-    enabled: profile?.userId === ADMIN_USER_ID && activeTab === "analytics",
+    enabled: isAdmin && activeTab === "analytics",
     queryFn: async () => {
       const url = new URL("/api/admin/analytics", getApiUrl());
       url.searchParams.set("userId", profile!.userId);
@@ -228,7 +238,7 @@ export default function AdminScreen() {
     (handleSearchChange as any)._timer = setTimeout(() => setDebouncedSearch(text), 400);
   }, []);
 
-  if (profile?.userId !== ADMIN_USER_ID) {
+  if (!isAdmin) {
     return (
       <View style={[styles.container, styles.center]}>
         <Ionicons name="lock-closed" size={48} color={Colors.textTertiary} />
