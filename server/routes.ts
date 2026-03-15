@@ -257,6 +257,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS handle TEXT`);
 
+  // Enforce unique usernames (case-insensitive) at the DB level
+  try {
+    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS users_username_lower_idx ON users (LOWER(username))`);
+  } catch (e) {
+    console.warn("Could not create unique username index (may have existing duplicates):", (e as any)?.message);
+  }
+
   // ── Waitlists table ───────────────────────────────────────────────────────
   await pool.query(`
     CREATE TABLE IF NOT EXISTS waitlists (
@@ -519,6 +526,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (deviceCheck.rows.length > 0) {
           return res.status(409).json({ message: "An account already exists on this device.", code: "device_exists" });
         }
+      }
+      // Enforce unique username (case-insensitive) across all users
+      const usernameCheck = await pool.query(
+        `SELECT user_id FROM users WHERE LOWER(username) = LOWER($1) AND user_id != $2 LIMIT 1`,
+        [username.trim(), userId]
+      );
+      if (usernameCheck.rows.length > 0) {
+        return res.status(409).json({ message: "That name is already taken. Please choose a different one.", code: "username_taken" });
       }
       const result = await pool.query(
         `INSERT INTO users (user_id, username, handle, email, phone, skill_level, device_id, last_ip, last_seen_at, updated_at)

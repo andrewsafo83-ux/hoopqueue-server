@@ -211,6 +211,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (body.code === "device_exists") {
         throw new Error("DEVICE_EXISTS");
       }
+      if (body.code === "username_taken") {
+        throw new Error("USERNAME_TAKEN");
+      }
       if (res.status === 409) {
         throw new Error(body.message || "Account error");
       }

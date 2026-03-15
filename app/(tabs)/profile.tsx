@@ -61,6 +61,7 @@ export default function ProfileScreen() {
   const [emailError, setEmailError] = useState("");
   const [phoneError, setPhoneError] = useState("");
   const [handleError, setHandleError] = useState("");
+  const [usernameError, setUsernameError] = useState("");
   const adminTapCount = useRef(0);
   const adminTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -173,6 +174,7 @@ export default function ProfileScreen() {
     setEmailError("");
     setPhoneError("");
     setHandleError("");
+    setUsernameError("");
     setIsSaving(true);
     if (Platform.OS !== "web") {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -184,6 +186,8 @@ export default function ProfileScreen() {
     } catch (err: any) {
       if (err?.message === "DEVICE_EXISTS") {
         Alert.alert("Account Exists", "An account already exists on this device. Only one account is allowed per device.");
+      } else if (err?.message === "USERNAME_TAKEN") {
+        setUsernameError("That name is already taken. Choose a different one.");
       } else if (err?.message?.includes("409") || err?.message?.includes("email")) {
         setEmailError("That email is already registered to another account.");
       } else if (err?.message) {
@@ -290,9 +294,9 @@ export default function ProfileScreen() {
           </View>
         </View>
         <TextInput
-          style={styles.input}
+          style={[styles.input, usernameError ? styles.inputError : null]}
           value={username}
-          onChangeText={setUsername}
+          onChangeText={(t) => { setUsername(t); if (usernameError) setUsernameError(""); }}
           placeholder="Enter your name"
           placeholderTextColor={Colors.textTertiary}
           maxLength={30}
@@ -300,7 +304,14 @@ export default function ProfileScreen() {
           autoCorrect={false}
           autoCapitalize="words"
         />
-        <Text style={styles.fieldHint}>Visible to other players on waitlists and the live feed</Text>
+        {usernameError ? (
+          <View style={styles.errorRow}>
+            <Ionicons name="alert-circle-outline" size={13} color={Colors.red} />
+            <Text style={styles.errorText}>{usernameError}</Text>
+          </View>
+        ) : (
+          <Text style={styles.fieldHint}>Visible to other players on waitlists and the live feed</Text>
+        )}
       </View>
 
       <View style={styles.section}>
