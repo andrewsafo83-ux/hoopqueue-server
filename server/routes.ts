@@ -8,7 +8,7 @@ import { US_COURTS } from "./us-courts";
 
 // ─── Database ─────────────────────────────────────────────────────────────────
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const pool = new Pool({ connectionString: process.env.SUPABASE_DB_URL });
 
 // ─── Supabase Storage ─────────────────────────────────────────────────────────
 
