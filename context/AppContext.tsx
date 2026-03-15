@@ -391,7 +391,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   return (
     <AppContext.Provider value={value}>
-      <PlayerCountsProvider allCourts={allCourts}>
+      <PlayerCountsProvider>
         {children}
       </PlayerCountsProvider>
     </AppContext.Provider>

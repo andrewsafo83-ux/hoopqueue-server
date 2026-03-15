@@ -281,7 +281,7 @@ export default function CourtDetailScreen() {
   const insets = useSafeAreaInsets();
   const qc = useQueryClient();
   const { waitlists, profile, joinWaitlist, leaveWaitlist, isOnWaitlist, getMyPosition, allCourts, fetchCourtWaitlist } = useApp();
-  const { playerCounts } = usePlayerCounts();
+  const { playerCounts, refetchCounts } = usePlayerCounts();
 
   const [isJoinLoading, setIsJoinLoading] = useState(false);
   const [inputText, setInputText] = useState("");
@@ -407,6 +407,7 @@ export default function CourtDetailScreen() {
       }
     } finally {
       setIsJoinLoading(false);
+      refetchCounts();
     }
   }
 

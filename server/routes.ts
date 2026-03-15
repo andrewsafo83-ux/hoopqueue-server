@@ -885,6 +885,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ── Server-side Waitlists ──────────────────────────────────────────────────
 
+  app.get("/api/waitlists/counts", async (_req: Request, res: Response) => {
+    try {
+      const result = await pool.query(
+        `SELECT court_id AS "courtId", COUNT(*) AS count FROM waitlists GROUP BY court_id`
+      );
+      const counts: Record<string, number> = {};
+      for (const row of result.rows) {
+        counts[row.courtId] = parseInt(row.count, 10);
+      }
+      res.json(counts);
+    } catch (err) {
+      console.error("GET /api/waitlists/counts error:", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.get("/api/waitlists/:courtId", async (req: Request, res: Response) => {
     const { courtId } = req.params;
     try {
