@@ -204,7 +204,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const res = await fetch(new URL("/api/users", getApiUrl()).toString(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId, username, handle: handle || undefined, email, phone: phone || undefined, skillLevel, deviceId }),
+      body: JSON.stringify({ userId, username, handle: handle || undefined, email, phone: phone || undefined, skillLevel, deviceId, lat: userLocation?.latitude ?? null, lng: userLocation?.longitude ?? null }),
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
@@ -220,7 +220,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } else {
       track("profile_saved", userId, { skillLevel });
     }
-  }, [profile]);
+  }, [profile, userLocation]);
 
   const refetchCourts = useCallback(async () => {
     const fetched = await fetchCourtsFromApi();

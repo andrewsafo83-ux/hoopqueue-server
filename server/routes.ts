@@ -256,6 +256,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMP DEFAULT NOW()`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS handle TEXT`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS lat DOUBLE PRECISION`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS lng DOUBLE PRECISION`);
 
   // Enforce unique usernames (case-insensitive) at the DB level
   try {
@@ -507,7 +509,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ── Users ──────────────────────────────────────────────────────────────────
 
   app.post("/api/users", async (req: Request, res: Response) => {
-    const { userId, username, handle, email, phone, skillLevel, deviceId } = req.body;
+    const { userId, username, handle, email, phone, skillLevel, deviceId, lat, lng } = req.body;
     const clientIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket.remoteAddress || "unknown";
     if (!userId || !username || !email) {
       return res.status(400).json({ message: "userId, username, and email are required" });
@@ -547,15 +549,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(409).json({ message: "That name is already taken. Please choose a different one.", code: "username_taken" });
       }
       const result = await pool.query(
-        `INSERT INTO users (user_id, username, handle, email, phone, skill_level, device_id, last_ip, last_seen_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
+        `INSERT INTO users (user_id, username, handle, email, phone, skill_level, device_id, last_ip, last_seen_at, updated_at, lat, lng)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW(), $9, $10)
          ON CONFLICT (user_id)
          DO UPDATE SET username = EXCLUDED.username, handle = EXCLUDED.handle, email = EXCLUDED.email,
            phone = EXCLUDED.phone, skill_level = EXCLUDED.skill_level,
            device_id = COALESCE(EXCLUDED.device_id, users.device_id),
-           last_ip = EXCLUDED.last_ip, last_seen_at = NOW(), updated_at = NOW()
+           last_ip = EXCLUDED.last_ip, last_seen_at = NOW(), updated_at = NOW(),
+           lat = COALESCE(EXCLUDED.lat, users.lat),
+           lng = COALESCE(EXCLUDED.lng, users.lng)
          RETURNING user_id, username, handle, skill_level`,
-        [userId, username.trim(), handle?.trim().toLowerCase() || null, email.trim().toLowerCase(), phone?.trim() || null, skillLevel ?? "Intermediate", deviceId || null, clientIp]
+        [userId, username.trim(), handle?.trim().toLowerCase() || null, email.trim().toLowerCase(), phone?.trim() || null, skillLevel ?? "Intermediate", deviceId || null, clientIp, lat ?? null, lng ?? null]
       );
       res.status(200).json(result.rows[0]);
     } catch (err: any) {
@@ -1271,7 +1275,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/feed/:userId", async (req: Request, res: Response) => {
     const { userId } = req.params;
+    const lat = req.query.lat ? parseFloat(req.query.lat as string) : null;
+    const lng = req.query.lng ? parseFloat(req.query.lng as string) : null;
+    const RADIUS_MILES = 100;
     try {
+      // Build the nearby-users subquery only when a location is provided
+      const nearbySubquery = (lat !== null && lng !== null)
+        ? `OR p.user_id IN (
+             SELECT user_id FROM users u2
+             WHERE u2.lat IS NOT NULL AND u2.lng IS NOT NULL
+               AND (
+                 3959 * acos(
+                   LEAST(1.0,
+                     cos(radians(${lat})) * cos(radians(u2.lat)) *
+                     cos(radians(u2.lng) - radians(${lng})) +
+                     sin(radians(${lat})) * sin(radians(u2.lat))
+                   )
+                 )
+               ) <= ${RADIUS_MILES}
+           )`
+        : "";
+
       const result = await pool.query(
         `SELECT p.*,
           COUNT(DISTINCT pl.user_id)::int AS like_count,
@@ -1282,10 +1306,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
          LEFT JOIN post_comments pc ON pc.post_id = p.id
          WHERE p.user_id = $1
            OR p.user_id IN (
-             SELECT CASE WHEN requester_id = $1 THEN addressee_id ELSE requester_id END
-             FROM friendships
-             WHERE (requester_id = $1 OR addressee_id = $1) AND status = 'accepted'
+             SELECT following_id FROM follows WHERE follower_id = $1
            )
+           ${nearbySubquery}
          GROUP BY p.id
          ORDER BY p.created_at DESC
          LIMIT 50`,

@@ -574,7 +574,7 @@ function PostCard({
 // ── Feed Screen ───────────────────────────────────────────────────────────────
 
 export default function FeedScreen() {
-  const { profile } = useApp();
+  const { profile, userLocation } = useApp();
   const insets = useSafeAreaInsets();
   const qc = useQueryClient();
   const [createVisible, setCreateVisible] = useState(false);
@@ -584,10 +584,14 @@ export default function FeedScreen() {
   const userId = profile?.userId ?? null;
 
   const { data: posts = [], isLoading } = useQuery<Post[]>({
-    queryKey: ["/api/feed", userId],
+    queryKey: ["/api/feed", userId, userLocation?.latitude, userLocation?.longitude],
     queryFn: async () => {
       if (!userId) return [];
       const url = new URL(`/api/feed/${userId}`, getApiUrl());
+      if (userLocation) {
+        url.searchParams.set("lat", String(userLocation.latitude));
+        url.searchParams.set("lng", String(userLocation.longitude));
+      }
       const res = await fetch(url.toString(), { cache: "no-store" });
       if (!res.ok) throw new Error("Failed");
       return res.json();
