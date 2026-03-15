@@ -66,6 +66,8 @@ interface UserRow {
   last_ip: string | null;
   created_at: string;
   last_seen_at: string | null;
+  lat: number | null;
+  lng: number | null;
   post_count: string;
   comment_count: string;
   like_count: string;
@@ -126,6 +128,19 @@ function UserDetailModal({ user, visible, onClose }: { user: UserRow | null; vis
               <ActivityStat label="DMs" value={user.dm_count} color={Colors.green} />
               <ActivityStat label="Waitlists" value={user.waitlist_count} color="#A855F7" />
             </View>
+          </View>
+
+          <Text style={styles.detailSectionTitle}>Location</Text>
+          <View style={styles.detailCard}>
+            {user.lat != null && user.lng != null ? (
+              <>
+                <DetailRow icon="location-outline" label="Coordinates" value={`${user.lat.toFixed(5)}, ${user.lng.toFixed(5)}`} />
+                <View style={styles.detailDivider} />
+                <DetailRow icon="map-outline" label="Google Maps" value={`maps.google.com/?q=${user.lat},${user.lng}`} />
+              </>
+            ) : (
+              <DetailRow icon="location-outline" label="Location" value="Not recorded yet" />
+            )}
           </View>
 
           <Text style={styles.detailSectionTitle}>Device & Access</Text>
@@ -492,6 +507,12 @@ export default function AdminScreen() {
                       <View style={styles.miniStat}>
                         <Ionicons name="mail-outline" size={12} color={Colors.textTertiary} />
                         <Text style={styles.miniStatText}>{u.dm_count}</Text>
+                      </View>
+                      <View style={styles.miniStat}>
+                        <Ionicons name="location-outline" size={12} color={u.lat ? Colors.green : Colors.textTertiary} />
+                        <Text style={[styles.miniStatText, { color: u.lat ? Colors.textSecondary : Colors.textTertiary }]}>
+                          {u.lat != null && u.lng != null ? `${u.lat.toFixed(2)}, ${u.lng.toFixed(2)}` : "no loc"}
+                        </Text>
                       </View>
                       <View style={[styles.miniStatRight]}>
                         {u.device_id ? (

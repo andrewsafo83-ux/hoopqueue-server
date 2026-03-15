@@ -482,6 +482,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const result = await pool.query(
         `SELECT u.user_id, u.username, u.handle, u.email, u.phone, u.skill_level,
                 u.device_id, u.last_ip, u.created_at, u.last_seen_at,
+                u.lat, u.lng,
                 COALESCE(p.post_count, 0) AS post_count,
                 COALESCE(c.comment_count, 0) AS comment_count,
                 COALESCE(l.like_count, 0) AS like_count,
