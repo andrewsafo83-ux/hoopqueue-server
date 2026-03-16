@@ -702,6 +702,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Posts by a specific user
+  app.get("/api/users/:userId/posts", async (req: Request, res: Response) => {
+    const { userId } = req.params;
+    const { viewerId } = req.query as { viewerId?: string };
+    const viewer = viewerId ?? userId;
+    try {
+      const result = await pool.query(
+        `SELECT p.*,
+          COUNT(DISTINCT pl.user_id)::int AS like_count,
+          COUNT(DISTINCT pc.id)::int AS comment_count,
+          BOOL_OR(pl.user_id = $2) AS user_liked
+         FROM posts p
+         LEFT JOIN post_likes pl ON pl.post_id = p.id
+         LEFT JOIN post_comments pc ON pc.post_id = p.id
+         WHERE p.user_id = $1
+         GROUP BY p.id
+         ORDER BY p.created_at DESC`,
+        [userId, viewer]
+      );
+      res.json(
+        result.rows.map((r) => ({
+          id: r.id,
+          userId: r.user_id,
+          username: r.username,
+          avatarBase64: r.avatar_base64,
+          imageBase64: r.image_base64,
+          imageUrl: r.image_url ?? null,
+          caption: r.caption,
+          courtId: r.court_id,
+          courtName: r.court_name,
+          createdAt: r.created_at,
+          likeCount: r.like_count,
+          commentCount: r.comment_count,
+          userLiked: r.user_liked ?? false,
+        }))
+      );
+    } catch (err) {
+      console.error("User posts error:", err);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
   // Follow a user
   app.post("/api/users/:userId/follow", async (req: Request, res: Response) => {
     const { userId } = req.params;

@@ -11,17 +11,45 @@ import {
   Linking,
   Image,
   ActivityIndicator,
+  Modal,
+  Dimensions,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useApp, generateUserId } from "@/context/AppContext";
 import { SKILL_LEVELS, SkillLevel } from "@/data/courts";
 import Colors from "@/constants/colors";
-import { getApiUrl } from "@/lib/query-client";
+import { getApiUrl, apiRequest } from "@/lib/query-client";
+
+const SCREEN_W = Dimensions.get("window").width;
+
+interface Post {
+  id: string;
+  userId: string;
+  username: string;
+  avatarBase64: string | null;
+  imageBase64: string | null;
+  imageUrl: string | null;
+  caption: string | null;
+  courtId: string | null;
+  courtName: string | null;
+  createdAt: string;
+  likeCount: number;
+  commentCount: number;
+  userLiked: boolean;
+}
+
+function timeAgo(dateStr: string): string {
+  const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+  if (diff < 60) return "just now";
+  if (diff < 3600) return `${Math.floor(diff / 60)}m`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
+  return `${Math.floor(diff / 86400)}d`;
+}
 
 const SKILL_DESCRIPTIONS: Record<SkillLevel, string> = {
   Beginner: "Just learning the game",
@@ -42,10 +70,136 @@ function openUrl(path: string) {
   Linking.openURL(`${base}${path}`);
 }
 
+function PostDetailModal({
+  post,
+  visible,
+  onClose,
+  onDelete,
+  myUserId,
+}: {
+  post: Post | null;
+  visible: boolean;
+  onClose: () => void;
+  onDelete: (id: string) => void;
+  myUserId: string | null;
+}) {
+  const insets = useSafeAreaInsets();
+  if (!post) return null;
+  const imgUri = post.imageUrl ?? (post.imageBase64 ? `data:image/jpeg;base64,${post.imageBase64}` : null);
+
+  const handleDelete = () => {
+    Alert.alert("Delete post?", "This can't be undone.", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Delete", style: "destructive", onPress: () => { onDelete(post.id); onClose(); } },
+    ]);
+  };
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <View style={[detailStyles.container, { paddingBottom: insets.bottom + 16 }]}>
+        <View style={detailStyles.header}>
+          <View style={detailStyles.handle} />
+          <TouchableOpacity onPress={onClose} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} style={detailStyles.closeBtn}>
+            <Ionicons name="close" size={22} color={Colors.textSecondary} />
+          </TouchableOpacity>
+        </View>
+
+        {imgUri && (
+          <Image source={{ uri: imgUri }} style={detailStyles.image} resizeMode="cover" />
+        )}
+
+        <View style={detailStyles.meta}>
+          <View style={detailStyles.metaLeft}>
+            <View style={detailStyles.statChip}>
+              <Ionicons name="heart" size={14} color={Colors.red} />
+              <Text style={detailStyles.statChipText}>{post.likeCount}</Text>
+            </View>
+            <View style={detailStyles.statChip}>
+              <Ionicons name="chatbubble" size={13} color={Colors.accent} />
+              <Text style={detailStyles.statChipText}>{post.commentCount}</Text>
+            </View>
+            {post.courtName ? (
+              <View style={detailStyles.statChip}>
+                <Ionicons name="basketball-outline" size={13} color={Colors.accent} />
+                <Text style={detailStyles.statChipText}>{post.courtName}</Text>
+              </View>
+            ) : null}
+          </View>
+          <Text style={detailStyles.time}>{timeAgo(post.createdAt)}</Text>
+        </View>
+
+        {post.caption ? (
+          <Text style={detailStyles.caption}>{post.caption}</Text>
+        ) : null}
+
+        {myUserId === post.userId && (
+          <TouchableOpacity style={detailStyles.deleteBtn} onPress={handleDelete} activeOpacity={0.8}>
+            <Ionicons name="trash-outline" size={16} color={Colors.red} />
+            <Text style={detailStyles.deleteBtnText}>Delete Post</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    </Modal>
+  );
+}
+
+const detailStyles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: Colors.background },
+  header: { alignItems: "center", paddingTop: 12, paddingBottom: 8, position: "relative" },
+  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: Colors.border, marginBottom: 8 },
+  closeBtn: { position: "absolute", right: 16, top: 12 },
+  image: { width: "100%", aspectRatio: 1 },
+  meta: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 4,
+  },
+  metaLeft: { flexDirection: "row", alignItems: "center", gap: 10, flexShrink: 1, flexWrap: "wrap" },
+  statChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: Colors.card,
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  statChipText: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: Colors.text },
+  time: { fontFamily: "Inter_400Regular", fontSize: 12, color: Colors.textTertiary, marginLeft: 8 },
+  caption: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 15,
+    color: Colors.text,
+    lineHeight: 22,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+  },
+  deleteBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginHorizontal: 16,
+    marginTop: 20,
+    paddingVertical: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Colors.red + "44",
+    justifyContent: "center",
+    backgroundColor: Colors.red + "0F",
+  },
+  deleteBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 15, color: Colors.red },
+});
+
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { profile, updateProfile, updateAvatar, waitlists } = useApp();
+  const qc = useQueryClient();
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const stableUserId = useRef(profile?.userId ?? generateUserId());
   const displayUserId = profile?.userId ?? stableUserId.current;
@@ -62,6 +216,7 @@ export default function ProfileScreen() {
   const [phoneError, setPhoneError] = useState("");
   const [handleError, setHandleError] = useState("");
   const [usernameError, setUsernameError] = useState("");
+  const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const adminTapCount = useRef(0);
   const adminTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -89,6 +244,32 @@ export default function ProfileScreen() {
   });
   const followers = followStatsQuery.data?.followers ?? 0;
   const following = followStatsQuery.data?.following ?? 0;
+
+  const userPostsQuery = useQuery<Post[]>({
+    queryKey: ["/api/users", profile?.userId, "posts"],
+    enabled: !!profile?.userId,
+    queryFn: async () => {
+      const url = new URL(`/api/users/${profile!.userId}/posts`, getApiUrl());
+      url.searchParams.set("viewerId", profile!.userId);
+      const res = await fetch(url.toString());
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+    staleTime: 15000,
+  });
+  const userPosts = userPostsQuery.data ?? [];
+
+  const deletePostMutation = useMutation({
+    mutationFn: async (postId: string) => {
+      if (!profile) throw new Error("Not logged in");
+      return apiRequest("DELETE", `/api/posts/${postId}`, { userId: profile.userId });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/users", profile?.userId, "posts"] });
+      qc.invalidateQueries({ queryKey: ["/api/feed", profile?.userId] });
+    },
+    onError: () => Alert.alert("Error", "Could not delete post. Try again."),
+  });
 
   function handleSecretTap() {
     adminTapCount.current += 1;
@@ -280,6 +461,11 @@ export default function ProfileScreen() {
       {profile && (
         <View style={styles.statsRow}>
           <View style={styles.statBox}>
+            <Text style={styles.statValue}>{userPosts.length}</Text>
+            <Text style={styles.statKey}>Posts</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statBox}>
             <Text style={styles.statValue}>{followers}</Text>
             <Text style={styles.statKey}>Followers</Text>
           </View>
@@ -293,13 +479,72 @@ export default function ProfileScreen() {
             <Text style={styles.statValue}>{myWaitlists}</Text>
             <Text style={styles.statKey}>Queued</Text>
           </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statBox}>
-            <Text style={styles.statValue}>{Object.keys(waitlists).length}</Text>
-            <Text style={styles.statKey}>Courts</Text>
-          </View>
         </View>
       )}
+
+      {/* Posts Grid */}
+      {profile && (
+        <View style={styles.postsSection}>
+          <View style={styles.postsSectionHeader}>
+            <Ionicons name="grid-outline" size={16} color={Colors.textSecondary} />
+            <Text style={styles.postsSectionTitle}>Posts</Text>
+          </View>
+          {userPostsQuery.isLoading ? (
+            <ActivityIndicator color={Colors.accent} style={{ marginVertical: 24 }} />
+          ) : userPosts.length === 0 ? (
+            <View style={styles.emptyPosts}>
+              <Ionicons name="camera-outline" size={32} color={Colors.textTertiary} />
+              <Text style={styles.emptyPostsText}>No posts yet</Text>
+            </View>
+          ) : (
+            <View style={styles.postsGrid}>
+              {userPosts.map((post) => {
+                const uri = post.imageUrl ?? (post.imageBase64 ? `data:image/jpeg;base64,${post.imageBase64}` : null);
+                return (
+                  <TouchableOpacity
+                    key={post.id}
+                    style={styles.gridCell}
+                    onPress={() => setSelectedPost(post)}
+                    activeOpacity={0.85}
+                  >
+                    {uri ? (
+                      <Image source={{ uri }} style={styles.gridImage} resizeMode="cover" />
+                    ) : (
+                      <View style={[styles.gridImage, { backgroundColor: Colors.card, alignItems: "center", justifyContent: "center" }]}>
+                        <Ionicons name="image-outline" size={20} color={Colors.textTertiary} />
+                      </View>
+                    )}
+                    {(post.likeCount > 0 || post.commentCount > 0) && (
+                      <View style={styles.gridOverlay}>
+                        {post.likeCount > 0 && (
+                          <View style={styles.gridStat}>
+                            <Ionicons name="heart" size={11} color="#fff" />
+                            <Text style={styles.gridStatText}>{post.likeCount}</Text>
+                          </View>
+                        )}
+                        {post.commentCount > 0 && (
+                          <View style={styles.gridStat}>
+                            <Ionicons name="chatbubble" size={10} color="#fff" />
+                            <Text style={styles.gridStatText}>{post.commentCount}</Text>
+                          </View>
+                        )}
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
+        </View>
+      )}
+
+      <PostDetailModal
+        post={selectedPost}
+        visible={!!selectedPost}
+        onClose={() => setSelectedPost(null)}
+        onDelete={(id) => deletePostMutation.mutate(id)}
+        myUserId={profile?.userId ?? null}
+      />
 
       <View style={styles.section}>
         <View style={styles.labelRow}>
@@ -803,5 +1048,69 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: 20,
     marginBottom: 8,
+  },
+  postsSection: {
+    marginBottom: 28,
+  },
+  postsSectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 12,
+  },
+  postsSectionTitle: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 13,
+    color: Colors.textSecondary,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+  },
+  postsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 2,
+  },
+  gridCell: {
+    width: (SCREEN_W - 40 - 4) / 3,
+    height: (SCREEN_W - 40 - 4) / 3,
+    position: "relative",
+    overflow: "hidden",
+    borderRadius: 4,
+  },
+  gridImage: {
+    width: "100%",
+    height: "100%",
+  },
+  gridOverlay: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+  },
+  gridStat: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+  },
+  gridStatText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 11,
+    color: "#fff",
+  },
+  emptyPosts: {
+    alignItems: "center",
+    paddingVertical: 32,
+    gap: 8,
+  },
+  emptyPostsText: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 14,
+    color: Colors.textTertiary,
   },
 });
