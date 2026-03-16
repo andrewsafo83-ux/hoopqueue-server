@@ -1276,26 +1276,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/feed/:userId", async (req: Request, res: Response) => {
     const { userId } = req.params;
-    const lat = req.query.lat ? parseFloat(req.query.lat as string) : null;
-    const lng = req.query.lng ? parseFloat(req.query.lng as string) : null;
+    const latRaw = req.query.lat ? parseFloat(req.query.lat as string) : null;
+    const lngRaw = req.query.lng ? parseFloat(req.query.lng as string) : null;
+    const lat = latRaw !== null && isFinite(latRaw) ? latRaw : null;
+    const lng = lngRaw !== null && isFinite(lngRaw) ? lngRaw : null;
     const RADIUS_MILES = 100;
     try {
-      // Build the nearby-users subquery only when a location is provided
-      const nearbySubquery = (lat !== null && lng !== null)
+      // Build the nearby-users subquery only when a valid location is provided.
+      // lat/lng are passed as parameterised values ($2, $3) — never interpolated.
+      const hasLocation = lat !== null && lng !== null;
+      const nearbySubquery = hasLocation
         ? `OR p.user_id IN (
              SELECT user_id FROM users u2
              WHERE u2.lat IS NOT NULL AND u2.lng IS NOT NULL
                AND (
                  3959 * acos(
                    LEAST(1.0,
-                     cos(radians(${lat})) * cos(radians(u2.lat)) *
-                     cos(radians(u2.lng) - radians(${lng})) +
-                     sin(radians(${lat})) * sin(radians(u2.lat))
+                     cos(radians($2)) * cos(radians(u2.lat)) *
+                     cos(radians(u2.lng) - radians($3)) +
+                     sin(radians($2)) * sin(radians(u2.lat))
                    )
                  )
-               ) <= ${RADIUS_MILES}
+               ) <= $4
            )`
         : "";
+      const queryParams: (string | number)[] = hasLocation
+        ? [userId, lat!, lng!, RADIUS_MILES]
+        : [userId];
 
       const result = await pool.query(
         `SELECT p.*,
@@ -1313,7 +1320,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
          GROUP BY p.id
          ORDER BY p.created_at DESC
          LIMIT 50`,
-        [userId]
+        queryParams
       );
       res.json(
         result.rows.map((r) => ({
