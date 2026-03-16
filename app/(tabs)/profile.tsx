@@ -198,7 +198,7 @@ const detailStyles = StyleSheet.create({
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { profile, updateProfile, updateAvatar, waitlists } = useApp();
+  const { profile, updateProfile, updateAvatar } = useApp();
   const qc = useQueryClient();
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const stableUserId = useRef(profile?.userId ?? generateUserId());
@@ -292,9 +292,6 @@ export default function ProfileScreen() {
     }
   }, [profile?.username, profile?.handle, profile?.email, profile?.phone, profile?.skillLevel]);
 
-  const myWaitlists = Object.values(waitlists).filter((list) =>
-    list.some((e) => e.userId === profile?.userId)
-  ).length;
 
   function validateEmail(val: string): boolean {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val.trim());
@@ -473,11 +470,6 @@ export default function ProfileScreen() {
           <View style={styles.statBox}>
             <Text style={styles.statValue}>{following}</Text>
             <Text style={styles.statKey}>Following</Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statBox}>
-            <Text style={styles.statValue}>{myWaitlists}</Text>
-            <Text style={styles.statKey}>Queued</Text>
           </View>
         </View>
       )}
