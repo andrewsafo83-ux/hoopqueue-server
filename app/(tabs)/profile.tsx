@@ -198,7 +198,7 @@ const detailStyles = StyleSheet.create({
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { profile, updateProfile, updateAvatar } = useApp();
+  const { profile, updateProfile, updateAvatar, deleteAccount } = useApp();
   const qc = useQueryClient();
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const stableUserId = useRef(profile?.userId ?? generateUserId());
@@ -389,6 +389,45 @@ export default function ProfileScreen() {
     } finally {
       setIsSaving(false);
     }
+  }
+
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+
+  async function handleDeleteAccount() {
+    Alert.alert(
+      "Delete Account",
+      "This will permanently delete your account, profile, posts, and all your data. This cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete My Account",
+          style: "destructive",
+          onPress: () => {
+            Alert.alert(
+              "Are you absolutely sure?",
+              "Your account and all data will be permanently deleted.",
+              [
+                { text: "Cancel", style: "cancel" },
+                {
+                  text: "Yes, Delete",
+                  style: "destructive",
+                  onPress: async () => {
+                    setIsDeletingAccount(true);
+                    try {
+                      await deleteAccount();
+                    } catch {
+                      Alert.alert("Error", "Could not delete account. Please try again or contact support.");
+                    } finally {
+                      setIsDeletingAccount(false);
+                    }
+                  },
+                },
+              ]
+            );
+          },
+        },
+      ]
+    );
   }
 
   const hasChanges =
@@ -761,6 +800,24 @@ export default function ProfileScreen() {
       </View>
 
       <Text style={styles.versionText}>HoopQueue · California Courts</Text>
+
+      {profile && (
+        <TouchableOpacity
+          style={styles.deleteAccountBtn}
+          onPress={handleDeleteAccount}
+          disabled={isDeletingAccount}
+          activeOpacity={0.8}
+        >
+          {isDeletingAccount ? (
+            <ActivityIndicator size="small" color={Colors.red} />
+          ) : (
+            <>
+              <Ionicons name="trash-outline" size={15} color={Colors.red} />
+              <Text style={styles.deleteAccountText}>Delete Account</Text>
+            </>
+          )}
+        </TouchableOpacity>
+      )}
     </ScrollView>
   );
 }
@@ -1032,6 +1089,21 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: Colors.border,
     marginHorizontal: 16,
+  },
+  deleteAccountBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    marginHorizontal: 20,
+    marginTop: 8,
+    marginBottom: 32,
+    paddingVertical: 12,
+  },
+  deleteAccountText: {
+    fontSize: 14,
+    color: Colors.red,
+    fontFamily: "Inter_500Medium",
   },
   versionText: {
     fontFamily: "Inter_400Regular",

@@ -71,6 +71,7 @@ interface AppContextValue {
   userLocation: UserLocation | null;
   updateProfile: (username: string, handle: string, email: string, phone: string, skillLevel: SkillLevel, forceUserId?: string) => Promise<void>;
   updateAvatar: (base64: string) => Promise<void>;
+  deleteAccount: () => Promise<void>;
   refetchCourts: () => Promise<void>;
   fetchCourtWaitlist: (courtId: string) => Promise<void>;
   joinWaitlist: (courtId: string) => Promise<{ ok: boolean; error?: string; currentCourtId?: string }>;
@@ -366,6 +367,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return US_STATES;
   }, []);
 
+  const deleteAccount = useCallback(async () => {
+    if (!profile) return;
+    await apiRequest("DELETE", `/api/users/${profile.userId}`, {});
+    await AsyncStorage.multiRemove([STORAGE_KEYS.PROFILE, STORAGE_KEYS.WAITLISTS]);
+    setProfile(null);
+    setWaitlists({});
+  }, [profile]);
+
   const value = useMemo<AppContextValue>(() => ({
     profile,
     courts,
@@ -375,6 +384,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     userLocation,
     updateProfile,
     updateAvatar,
+    deleteAccount,
     refetchCourts,
     fetchCourtWaitlist,
     joinWaitlist,
@@ -390,7 +400,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setStateFilter,
     availableCities,
     availableStates,
-  }), [profile, courts, allCourts, waitlists, isLoaded, userLocation, updateProfile, updateAvatar, refetchCourts, fetchCourtWaitlist, joinWaitlist, leaveWaitlist, isOnWaitlist, getMyPosition, getDistanceMiles, courtFilter, setCourtFilter, cityFilter, setCityFilter, stateFilter, setStateFilter, availableCities, availableStates]);
+  }), [profile, courts, allCourts, waitlists, isLoaded, userLocation, updateProfile, updateAvatar, deleteAccount, refetchCourts, fetchCourtWaitlist, joinWaitlist, leaveWaitlist, isOnWaitlist, getMyPosition, getDistanceMiles, courtFilter, setCourtFilter, cityFilter, setCityFilter, stateFilter, setStateFilter, availableCities, availableStates]);
 
   return (
     <AppContext.Provider value={value}>

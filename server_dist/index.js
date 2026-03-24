@@ -2110,6 +2110,24 @@ async function registerRoutes(app2) {
       res.status(500).json({ message: "Server error" });
     }
   });
+  app2.delete("/api/users/:userId", async (req, res) => {
+    const { userId } = req.params;
+    try {
+      await pool.query("DELETE FROM post_likes WHERE user_id = $1", [userId]);
+      await pool.query("DELETE FROM post_comments WHERE user_id = $1", [userId]);
+      await pool.query("DELETE FROM posts WHERE user_id = $1", [userId]);
+      await pool.query("DELETE FROM follows WHERE follower_id = $1 OR following_id = $1", [userId]);
+      await pool.query("DELETE FROM friendships WHERE requester_id = $1 OR addressee_id = $1", [userId]);
+      await pool.query("DELETE FROM direct_messages WHERE sender_id = $1 OR receiver_id = $1", [userId]);
+      await pool.query("DELETE FROM dm_read_receipts WHERE user_id = $1 OR partner_id = $1", [userId]);
+      await pool.query("DELETE FROM waitlists WHERE user_id = $1", [userId]);
+      await pool.query("DELETE FROM users WHERE user_id = $1", [userId]);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Delete account error:", err);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
   app2.get("/api/users/:userId/posts", async (req, res) => {
     const { userId } = req.params;
     const { viewerId } = req.query;
