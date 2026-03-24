@@ -19,8 +19,7 @@
       "buildNumber": "1",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "HoopQueue uses your location to show nearby basketball courts.",
-        "NSLocationAlwaysUsageDescription": "HoopQueue uses your location to show nearby basketball courts.",
-        "NSUserTrackingUsageDescription": "HoopQueue uses this to improve your experience and show relevant content."
+        "NSLocationAlwaysUsageDescription": "HoopQueue uses your location to show nearby basketball courts."
       }
     },
     "android": {
@@ -65,8 +64,7 @@
         {
           "photosPermission": "HoopQueue needs access to your photos to set a profile picture."
         }
-      ],
-      "expo-tracking-transparency"
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
