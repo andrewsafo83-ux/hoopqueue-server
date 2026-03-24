@@ -199,6 +199,12 @@ function configureExpoAndLanding(app: express.Application) {
     next();
   });
 
+  app.get("/support", (_req: Request, res: Response) => {
+    const supportPath = path.resolve(process.cwd(), "server", "templates", "support.html");
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.status(200).send(fs.readFileSync(supportPath, "utf-8"));
+  });
+
   app.get("/privacy", (_req: Request, res: Response) => {
     const privacyPath = path.resolve(process.cwd(), "server", "templates", "privacy.html");
     res.setHeader("Content-Type", "text/html; charset=utf-8");
