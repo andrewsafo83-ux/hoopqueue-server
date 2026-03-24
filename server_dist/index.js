@@ -1459,7 +1459,7 @@ var US_COURTS = [
 ];
 
 // server/routes.ts
-var pool = new Pool({ connectionString: process.env.DATABASE_URL });
+var pool = new Pool({ connectionString: process.env.SUPABASE_DB_URL });
 var SUPABASE_URL = process.env.SUPABASE_URL ?? "";
 var SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 async function uploadImageToStorage(base64, filename) {
@@ -1694,6 +1694,13 @@ async function registerRoutes(app2) {
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMP DEFAULT NOW()`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS handle TEXT`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS lat DOUBLE PRECISION`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS lng DOUBLE PRECISION`);
+  try {
+    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS users_username_lower_idx ON users (LOWER(username))`);
+  } catch (e) {
+    console.warn("Could not create unique username index (may have existing duplicates):", e?.message);
+  }
   await pool.query(`
     CREATE TABLE IF NOT EXISTS waitlists (
       id SERIAL PRIMARY KEY,
@@ -1704,6 +1711,15 @@ async function registerRoutes(app2) {
       position INTEGER NOT NULL,
       joined_at TIMESTAMP DEFAULT NOW(),
       UNIQUE(court_id, user_id)
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS follows (
+      id SERIAL PRIMARY KEY,
+      follower_id TEXT NOT NULL,
+      following_id TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT NOW(),
+      UNIQUE(follower_id, following_id)
     )
   `);
   await pool.query(`
@@ -1821,7 +1837,11 @@ async function registerRoutes(app2) {
       res.status(500).json({ message: "Failed to fetch analytics" });
     }
   });
-  const ADMIN_USER_ID = "17734724774840shljhn";
+  const ADMIN_USER_ID = process.env.ADMIN_USER_ID ?? "";
+  app2.get("/api/admin/check", async (req, res) => {
+    const { userId } = req.query;
+    res.json({ isAdmin: !!ADMIN_USER_ID && userId === ADMIN_USER_ID });
+  });
   app2.get("/api/admin/stats", async (req, res) => {
     const { userId } = req.query;
     if (userId !== ADMIN_USER_ID) {
@@ -1888,6 +1908,7 @@ async function registerRoutes(app2) {
       const result = await pool.query(
         `SELECT u.user_id, u.username, u.handle, u.email, u.phone, u.skill_level,
                 u.device_id, u.last_ip, u.created_at, u.last_seen_at,
+                u.lat, u.lng,
                 COALESCE(p.post_count, 0) AS post_count,
                 COALESCE(c.comment_count, 0) AS comment_count,
                 COALESCE(l.like_count, 0) AS like_count,
@@ -1912,7 +1933,7 @@ async function registerRoutes(app2) {
     }
   });
   app2.post("/api/users", async (req, res) => {
-    const { userId, username, handle, email, phone, skillLevel, deviceId } = req.body;
+    const { userId, username, handle, email, phone, skillLevel, deviceId, lat, lng } = req.body;
     const clientIp = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.socket.remoteAddress || "unknown";
     if (!userId || !username || !email) {
       return res.status(400).json({ message: "userId, username, and email are required" });
@@ -1942,16 +1963,25 @@ async function registerRoutes(app2) {
           return res.status(409).json({ message: "An account already exists on this device.", code: "device_exists" });
         }
       }
+      const usernameCheck = await pool.query(
+        `SELECT user_id FROM users WHERE LOWER(username) = LOWER($1) AND user_id != $2 LIMIT 1`,
+        [username.trim(), userId]
+      );
+      if (usernameCheck.rows.length > 0) {
+        return res.status(409).json({ message: "That name is already taken. Please choose a different one.", code: "username_taken" });
+      }
       const result = await pool.query(
-        `INSERT INTO users (user_id, username, handle, email, phone, skill_level, device_id, last_ip, last_seen_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
+        `INSERT INTO users (user_id, username, handle, email, phone, skill_level, device_id, last_ip, last_seen_at, updated_at, lat, lng)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW(), $9, $10)
          ON CONFLICT (user_id)
          DO UPDATE SET username = EXCLUDED.username, handle = EXCLUDED.handle, email = EXCLUDED.email,
            phone = EXCLUDED.phone, skill_level = EXCLUDED.skill_level,
            device_id = COALESCE(EXCLUDED.device_id, users.device_id),
-           last_ip = EXCLUDED.last_ip, last_seen_at = NOW(), updated_at = NOW()
+           last_ip = EXCLUDED.last_ip, last_seen_at = NOW(), updated_at = NOW(),
+           lat = COALESCE(EXCLUDED.lat, users.lat),
+           lng = COALESCE(EXCLUDED.lng, users.lng)
          RETURNING user_id, username, handle, skill_level`,
-        [userId, username.trim(), handle?.trim().toLowerCase() || null, email.trim().toLowerCase(), phone?.trim() || null, skillLevel ?? "Intermediate", deviceId || null, clientIp]
+        [userId, username.trim(), handle?.trim().toLowerCase() || null, email.trim().toLowerCase(), phone?.trim() || null, skillLevel ?? "Intermediate", deviceId || null, clientIp, lat ?? null, lng ?? null]
       );
       res.status(200).json(result.rows[0]);
     } catch (err) {
@@ -2051,6 +2081,104 @@ async function registerRoutes(app2) {
       res.json({ avatar_base64: result.rows[0].avatar_base64 ?? null });
     } catch (err) {
       console.error("Avatar fetch error:", err);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+  app2.get("/api/users/:userId/follow-stats", async (req, res) => {
+    const { userId } = req.params;
+    const { viewerId } = req.query;
+    try {
+      const [followersResult, followingResult] = await Promise.all([
+        pool.query(`SELECT COUNT(*) FROM follows WHERE following_id = $1`, [userId]),
+        pool.query(`SELECT COUNT(*) FROM follows WHERE follower_id = $1`, [userId])
+      ]);
+      let isFollowing = false;
+      if (viewerId && viewerId !== userId) {
+        const check = await pool.query(
+          `SELECT 1 FROM follows WHERE follower_id = $1 AND following_id = $2`,
+          [viewerId, userId]
+        );
+        isFollowing = check.rows.length > 0;
+      }
+      res.json({
+        followers: parseInt(followersResult.rows[0].count, 10),
+        following: parseInt(followingResult.rows[0].count, 10),
+        isFollowing
+      });
+    } catch (err) {
+      console.error("Follow stats error:", err);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+  app2.get("/api/users/:userId/posts", async (req, res) => {
+    const { userId } = req.params;
+    const { viewerId } = req.query;
+    const viewer = viewerId ?? userId;
+    try {
+      const result = await pool.query(
+        `SELECT p.*,
+          COUNT(DISTINCT pl.user_id)::int AS like_count,
+          COUNT(DISTINCT pc.id)::int AS comment_count,
+          BOOL_OR(pl.user_id = $2) AS user_liked
+         FROM posts p
+         LEFT JOIN post_likes pl ON pl.post_id = p.id
+         LEFT JOIN post_comments pc ON pc.post_id = p.id
+         WHERE p.user_id = $1
+         GROUP BY p.id
+         ORDER BY p.created_at DESC`,
+        [userId, viewer]
+      );
+      res.json(
+        result.rows.map((r) => ({
+          id: r.id,
+          userId: r.user_id,
+          username: r.username,
+          avatarBase64: r.avatar_base64,
+          imageBase64: r.image_base64,
+          imageUrl: r.image_url ?? null,
+          caption: r.caption,
+          courtId: r.court_id,
+          courtName: r.court_name,
+          createdAt: r.created_at,
+          likeCount: r.like_count,
+          commentCount: r.comment_count,
+          userLiked: r.user_liked ?? false
+        }))
+      );
+    } catch (err) {
+      console.error("User posts error:", err);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+  app2.post("/api/users/:userId/follow", async (req, res) => {
+    const { userId } = req.params;
+    const { followerId } = req.body;
+    if (!followerId || followerId === userId) {
+      return res.status(400).json({ message: "Invalid request" });
+    }
+    try {
+      await pool.query(
+        `INSERT INTO follows (follower_id, following_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+        [followerId, userId]
+      );
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("Follow error:", err);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+  app2.delete("/api/users/:userId/follow", async (req, res) => {
+    const { userId } = req.params;
+    const { followerId } = req.body;
+    if (!followerId) return res.status(400).json({ message: "Missing followerId" });
+    try {
+      await pool.query(
+        `DELETE FROM follows WHERE follower_id = $1 AND following_id = $2`,
+        [followerId, userId]
+      );
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("Unfollow error:", err);
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -2273,6 +2401,21 @@ async function registerRoutes(app2) {
     } catch (err) {
       console.error("Push token save error:", err);
       res.status(500).json({ message: "Server error" });
+    }
+  });
+  app2.get("/api/waitlists/counts", async (_req, res) => {
+    try {
+      const result = await pool.query(
+        `SELECT court_id AS "courtId", COUNT(*) AS count FROM waitlists GROUP BY court_id`
+      );
+      const counts = {};
+      for (const row of result.rows) {
+        counts[row.courtId] = parseInt(row.count, 10);
+      }
+      res.json(counts);
+    } catch (err) {
+      console.error("GET /api/waitlists/counts error:", err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
   app2.get("/api/waitlists/:courtId", async (req, res) => {
@@ -2509,7 +2652,27 @@ async function registerRoutes(app2) {
   });
   app2.get("/api/feed/:userId", async (req, res) => {
     const { userId } = req.params;
+    const latRaw = req.query.lat ? parseFloat(req.query.lat) : null;
+    const lngRaw = req.query.lng ? parseFloat(req.query.lng) : null;
+    const lat = latRaw !== null && isFinite(latRaw) ? latRaw : null;
+    const lng = lngRaw !== null && isFinite(lngRaw) ? lngRaw : null;
+    const RADIUS_MILES = 100;
     try {
+      const hasLocation = lat !== null && lng !== null;
+      const nearbySubquery = hasLocation ? `OR p.user_id IN (
+             SELECT user_id FROM users u2
+             WHERE u2.lat IS NOT NULL AND u2.lng IS NOT NULL
+               AND (
+                 3959 * acos(
+                   LEAST(1.0,
+                     cos(radians($2)) * cos(radians(u2.lat)) *
+                     cos(radians(u2.lng) - radians($3)) +
+                     sin(radians($2)) * sin(radians(u2.lat))
+                   )
+                 )
+               ) <= $4
+           )` : "";
+      const queryParams = hasLocation ? [userId, lat, lng, RADIUS_MILES] : [userId];
       const result = await pool.query(
         `SELECT p.*,
           COUNT(DISTINCT pl.user_id)::int AS like_count,
@@ -2518,19 +2681,15 @@ async function registerRoutes(app2) {
          FROM posts p
          LEFT JOIN post_likes pl ON pl.post_id = p.id
          LEFT JOIN post_comments pc ON pc.post_id = p.id
-         WHERE p.deleted_at IS NULL
-           AND (
-             p.user_id = $1
-             OR p.user_id IN (
-               SELECT CASE WHEN requester_id = $1 THEN addressee_id ELSE requester_id END
-               FROM friendships
-               WHERE (requester_id = $1 OR addressee_id = $1) AND status = 'accepted'
-             )
+         WHERE p.user_id = $1
+           OR p.user_id IN (
+             SELECT following_id FROM follows WHERE follower_id = $1
            )
+           ${nearbySubquery}
          GROUP BY p.id
          ORDER BY p.created_at DESC
          LIMIT 50`,
-        [userId]
+        queryParams
       );
       res.json(
         result.rows.map((r) => ({
@@ -2582,60 +2741,13 @@ async function registerRoutes(app2) {
     try {
       const check = await pool.query("SELECT user_id FROM posts WHERE id = $1", [postId]);
       if (check.rows.length === 0) return res.status(404).json({ message: "Post not found" });
-      const isAdmin = userId === ADMIN_USER_ID;
-      if (check.rows[0].user_id !== userId && !isAdmin) return res.status(403).json({ message: "Not your post" });
-      await pool.query(
-        "UPDATE posts SET deleted_at = NOW(), deleted_by = $1 WHERE id = $2",
-        [userId, postId]
-      );
+      if (check.rows[0].user_id !== userId) return res.status(403).json({ message: "Not your post" });
+      await pool.query("DELETE FROM post_likes WHERE post_id = $1", [postId]);
+      await pool.query("DELETE FROM post_comments WHERE post_id = $1", [postId]);
+      await pool.query("DELETE FROM posts WHERE id = $1", [postId]);
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ message: "Failed to delete post" });
-    }
-  });
-  app2.get("/api/admin/posts", async (req, res) => {
-    const { userId } = req.query;
-    if (userId !== ADMIN_USER_ID) return res.status(403).json({ message: "Forbidden" });
-    try {
-      const result = await pool.query(`
-        SELECT p.id, p.user_id, p.username, p.image_url, p.image_base64,
-               p.caption, p.court_name, p.created_at, p.deleted_at, p.deleted_by,
-               COUNT(DISTINCT pl.user_id)::int AS like_count,
-               COUNT(DISTINCT pc.id)::int AS comment_count
-        FROM posts p
-        LEFT JOIN post_likes pl ON pl.post_id = p.id
-        LEFT JOIN post_comments pc ON pc.post_id = p.id
-        GROUP BY p.id
-        ORDER BY p.created_at DESC
-        LIMIT 200
-      `);
-      res.json(result.rows.map((r) => ({
-        id: r.id,
-        userId: r.user_id,
-        username: r.username,
-        imageUrl: r.image_url ?? null,
-        imageBase64: r.image_base64 ?? null,
-        caption: r.caption ?? null,
-        courtName: r.court_name ?? null,
-        createdAt: r.created_at,
-        deletedAt: r.deleted_at ?? null,
-        deletedBy: r.deleted_by ?? null,
-        likeCount: r.like_count,
-        commentCount: r.comment_count
-      })));
-    } catch (err) {
-      res.status(500).json({ message: "Failed to fetch posts" });
-    }
-  });
-  app2.post("/api/admin/posts/:postId/restore", async (req, res) => {
-    const { postId } = req.params;
-    const { userId } = req.body;
-    if (userId !== ADMIN_USER_ID) return res.status(403).json({ message: "Forbidden" });
-    try {
-      await pool.query("UPDATE posts SET deleted_at = NULL, deleted_by = NULL WHERE id = $1", [postId]);
-      res.json({ success: true });
-    } catch (err) {
-      res.status(500).json({ message: "Failed to restore post" });
     }
   });
   app2.post("/api/posts/:postId/like", async (req, res) => {
@@ -2862,6 +2974,11 @@ function configureExpoAndLanding(app2) {
       });
     }
     next();
+  });
+  app2.get("/support", (_req, res) => {
+    const supportPath = path2.resolve(process.cwd(), "server", "templates", "support.html");
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.status(200).send(fs2.readFileSync(supportPath, "utf-8"));
   });
   app2.get("/privacy", (_req, res) => {
     const privacyPath = path2.resolve(process.cwd(), "server", "templates", "privacy.html");
