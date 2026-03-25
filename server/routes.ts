@@ -1361,7 +1361,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                  )
                ) <= $4
            )`
-        : "";
+        : "OR 1=1";
       const queryParams: (string | number)[] = hasLocation
         ? [userId, lat!, lng!, RADIUS_MILES]
         : [userId];
@@ -1381,7 +1381,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
            ${nearbySubquery}
          GROUP BY p.id
          ORDER BY p.created_at DESC
-         LIMIT 50`,
+         LIMIT 100`,
         queryParams
       );
       res.json(

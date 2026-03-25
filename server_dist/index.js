@@ -2689,7 +2689,7 @@ async function registerRoutes(app2) {
                    )
                  )
                ) <= $4
-           )` : "";
+           )` : "OR 1=1";
       const queryParams = hasLocation ? [userId, lat, lng, RADIUS_MILES] : [userId];
       const result = await pool.query(
         `SELECT p.*,
@@ -2706,7 +2706,7 @@ async function registerRoutes(app2) {
            ${nearbySubquery}
          GROUP BY p.id
          ORDER BY p.created_at DESC
-         LIMIT 50`,
+         LIMIT 100`,
         queryParams
       );
       res.json(
