@@ -280,6 +280,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
     )
   `);
 
+  // ── Blocked users table ────────────────────────────────────────────────────
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS blocked_users (
+      id SERIAL PRIMARY KEY,
+      blocker_id TEXT NOT NULL,
+      blocked_id TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT NOW(),
+      UNIQUE(blocker_id, blocked_id)
+    )
+  `);
+
+  // ── Reported posts table ────────────────────────────────────────────────────
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS reported_posts (
+      id SERIAL PRIMARY KEY,
+      reporter_id TEXT NOT NULL,
+      post_id TEXT NOT NULL,
+      reason TEXT,
+      created_at TIMESTAMP DEFAULT NOW(),
+      UNIQUE(reporter_id, post_id)
+    )
+  `);
+
   // ── Follows table ─────────────────────────────────────────────────────────
   await pool.query(`
     CREATE TABLE IF NOT EXISTS follows (
@@ -713,6 +736,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (err) {
       console.error("Follow stats error:", err);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Block a user
+  app.post("/api/users/:userId/block", async (req: Request, res: Response) => {
+    const { userId } = req.params;
+    const { blockerId } = req.body;
+    if (!blockerId) return res.status(400).json({ message: "blockerId required" });
+    try {
+      await pool.query(
+        `INSERT INTO blocked_users (blocker_id, blocked_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+        [blockerId, userId]
+      );
+      // Also remove any follows between them
+      await pool.query(`DELETE FROM follows WHERE (follower_id = $1 AND following_id = $2) OR (follower_id = $2 AND following_id = $1)`, [blockerId, userId]);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Report a post
+  app.post("/api/posts/:postId/report", async (req: Request, res: Response) => {
+    const { postId } = req.params;
+    const { reporterId, reason } = req.body;
+    if (!reporterId) return res.status(400).json({ message: "reporterId required" });
+    try {
+      await pool.query(
+        `INSERT INTO reported_posts (reporter_id, post_id, reason) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+        [reporterId, postId, reason ?? "objectionable content"]
+      );
+      res.json({ ok: true });
+    } catch (err) {
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -1389,11 +1446,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
          FROM posts p
          LEFT JOIN post_likes pl ON pl.post_id = p.id
          LEFT JOIN post_comments pc ON pc.post_id = p.id
-         WHERE p.user_id = $1
-           OR p.user_id IN (
-             SELECT following_id FROM follows WHERE follower_id = $1
+         WHERE p.user_id NOT IN (
+             SELECT blocked_id FROM blocked_users WHERE blocker_id = $1
            )
-           ${nearbySubquery}
+           AND (
+             p.user_id = $1
+             OR p.user_id IN (
+               SELECT following_id FROM follows WHERE follower_id = $1
+             )
+             ${nearbySubquery}
+           )
          GROUP BY p.id
          ORDER BY p.created_at DESC
          LIMIT 100`,

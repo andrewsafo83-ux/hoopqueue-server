@@ -1,9 +1,11 @@
 
 import React, { useState, useCallback, useRef, useEffect } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   View,
   Text,
   StyleSheet,
+  ScrollView,
   FlatList,
   TouchableOpacity,
   Image,
@@ -493,14 +495,33 @@ function PostCard({
   onComment,
   onLike,
   onDelete,
+  onReport,
+  onBlock,
   myUserId,
 }: {
   post: Post;
   onComment: () => void;
   onLike: () => void;
   onDelete: () => void;
+  onReport: () => void;
+  onBlock: () => void;
   myUserId: string | null;
 }) {
+  function showMenu() {
+    if (myUserId === post.userId) {
+      Alert.alert("Post Options", undefined, [
+        { text: "Delete Post", style: "destructive", onPress: onDelete },
+        { text: "Cancel", style: "cancel" },
+      ]);
+    } else {
+      Alert.alert("Post Options", undefined, [
+        { text: "Report Post", style: "destructive", onPress: onReport },
+        { text: `Block ${post.username}`, style: "destructive", onPress: onBlock },
+        { text: "Cancel", style: "cancel" },
+      ]);
+    }
+  }
+
   return (
     <View style={styles.card}>
       {/* Top row */}
@@ -521,15 +542,13 @@ function PostCard({
           {post.courtName && (
             <Text style={styles.cardTimeSmall}>{timeAgo(post.createdAt)}</Text>
           )}
-          {myUserId === post.userId && (
-            <TouchableOpacity
-              onPress={onDelete}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              style={{ marginLeft: 8 }}
-            >
-              <Ionicons name="trash-outline" size={16} color={Colors.textTertiary} />
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity
+            onPress={showMenu}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            style={{ marginLeft: 8 }}
+          >
+            <Ionicons name="ellipsis-horizontal" size={18} color={Colors.textTertiary} />
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -580,6 +599,14 @@ export default function FeedScreen() {
   const [createVisible, setCreateVisible] = useState(false);
   const [commentPost, setCommentPost] = useState<Post | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [blockedUsers, setBlockedUsers] = useState<Set<string>>(new Set());
+  const [termsVisible, setTermsVisible] = useState(false);
+
+  useEffect(() => {
+    AsyncStorage.getItem("hq_terms_accepted").then((val) => {
+      if (!val) setTermsVisible(true);
+    });
+  }, []);
 
   const userId = profile?.userId ?? null;
 
@@ -658,6 +685,42 @@ export default function FeedScreen() {
     ]);
   };
 
+  const handleReport = (postId: string) => {
+    Alert.alert("Report Post", "Are you sure you want to report this post as objectionable?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Report",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await apiRequest("POST", `/api/posts/${postId}/report`, { reporterId: userId, reason: "objectionable content" });
+            Alert.alert("Reported", "Thank you. We'll review this post and take action if it violates our guidelines.");
+            qc.setQueryData<Post[]>(["/api/feed", userId], (old = []) => old.filter((p) => p.id !== postId));
+          } catch { /* silent */ }
+        },
+      },
+    ]);
+  };
+
+  const handleBlock = (targetUserId: string, targetUsername: string) => {
+    Alert.alert(`Block ${targetUsername}?`, "They won't appear in your feed and you'll be removed from each other's followers.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Block",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await apiRequest("POST", `/api/users/${targetUserId}/block`, { blockerId: userId });
+            setBlockedUsers((prev) => new Set([...prev, targetUserId]));
+            qc.setQueryData<Post[]>(["/api/feed", userId], (old = []) => old.filter((p) => p.userId !== targetUserId));
+          } catch { /* silent */ }
+        },
+      },
+    ]);
+  };
+
+  const visiblePosts = posts.filter((p) => !blockedUsers.has(p.userId));
+
   const renderPost = useCallback(
     ({ item }: { item: Post }) => (
       <PostCard
@@ -666,9 +729,11 @@ export default function FeedScreen() {
         onLike={() => likeMutation.mutate(item.id)}
         onComment={() => setCommentPost(item)}
         onDelete={() => handleDelete(item.id)}
+        onReport={() => handleReport(item.id)}
+        onBlock={() => handleBlock(item.userId, item.username)}
       />
     ),
-    [userId, likeMutation]
+    [userId, likeMutation, blockedUsers]
   );
 
   if (!profile) {
@@ -710,7 +775,7 @@ export default function FeedScreen() {
         />
       ) : (
         <FlatList
-          data={posts}
+          data={visiblePosts}
           keyExtractor={(p) => p.id}
           renderItem={renderPost}
           contentContainerStyle={[
@@ -757,6 +822,50 @@ export default function FeedScreen() {
         visible={!!commentPost}
         onClose={() => setCommentPost(null)}
       />
+
+      {/* Terms of Use Modal */}
+      <Modal visible={termsVisible} transparent animationType="slide">
+        <View style={styles.termsOverlay}>
+          <View style={[styles.termsSheet, { paddingBottom: insets.bottom + 24 }]}>
+            <View style={styles.termsHandle} />
+            <Text style={styles.termsTitle}>Terms of Use</Text>
+            <ScrollView style={styles.termsScroll} showsVerticalScrollIndicator={false}>
+              <Text style={styles.termsBody}>
+                Welcome to HoopQueue. By using this app, you agree to the following:
+                {"\n\n"}
+                <Text style={styles.termsBold}>1. User-Generated Content</Text>
+                {"\n"}You are responsible for all content you post. Do not post anything illegal, offensive, or harmful.
+                {"\n\n"}
+                <Text style={styles.termsBold}>2. Community Standards</Text>
+                {"\n"}Treat all players with respect. Harassment, hate speech, and bullying are not tolerated.
+                {"\n\n"}
+                <Text style={styles.termsBold}>3. Reporting & Blocking</Text>
+                {"\n"}Use the report and block features to flag objectionable content or users. We review all reports.
+                {"\n\n"}
+                <Text style={styles.termsBold}>4. Privacy</Text>
+                {"\n"}We collect minimal data to operate the service. See our full privacy policy at hoopqueue.app/privacy.
+                {"\n\n"}
+                <Text style={styles.termsBold}>5. Account Termination</Text>
+                {"\n"}We may suspend or delete accounts that violate these terms without notice.
+                {"\n\n"}
+                <Text style={styles.termsBold}>6. Changes</Text>
+                {"\n"}We may update these terms periodically. Continued use of the app constitutes acceptance of any changes.
+                {"\n\n"}
+                For questions, contact us at hoopqueue@gmail.com.
+              </Text>
+            </ScrollView>
+            <TouchableOpacity
+              style={styles.termsAgreeBtn}
+              onPress={() => {
+                AsyncStorage.setItem("hq_terms_accepted", "1");
+                setTermsVisible(false);
+              }}
+            >
+              <Text style={styles.termsAgreeBtnText}>I Agree</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1121,5 +1230,60 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: Colors.text,
     maxHeight: 100,
+  },
+
+  // Terms modal
+  termsOverlay: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0,0,0,0.55)",
+  },
+  termsSheet: {
+    backgroundColor: Colors.card,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    maxHeight: "80%",
+  },
+  termsHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: Colors.border,
+    alignSelf: "center",
+    marginBottom: 20,
+  },
+  termsTitle: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 22,
+    color: Colors.text,
+    marginBottom: 16,
+    textAlign: "center",
+  },
+  termsScroll: {
+    maxHeight: 340,
+    marginBottom: 20,
+  },
+  termsBody: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 14,
+    color: Colors.textSecondary,
+    lineHeight: 22,
+  },
+  termsBold: {
+    fontFamily: "Inter_700Bold",
+    color: Colors.text,
+  },
+  termsAgreeBtn: {
+    backgroundColor: Colors.accent,
+    borderRadius: 14,
+    paddingVertical: 16,
+    alignItems: "center",
+  },
+  termsAgreeBtnText: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 16,
+    color: "#fff",
   },
 });
