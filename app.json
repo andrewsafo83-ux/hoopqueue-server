@@ -62,7 +62,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "HoopQueue needs access to your photos to set a profile picture."
+          "cameraPermission": "HoopQueue uses your camera so you can take photos of basketball courts and gameplay to share in your activity feed.",
+          "photosPermission": "HoopQueue uses your photo library so you can choose a photo of a basketball court or gameplay to share in your activity feed, or set your profile picture."
         }
       ]
     ],

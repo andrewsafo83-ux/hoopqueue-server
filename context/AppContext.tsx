@@ -197,6 +197,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const updateProfile = useCallback(async (username: string, handle: string, email: string, phone: string, skillLevel: SkillLevel, forceUserId?: string) => {
+    // Demo account shortcut — load the pre-seeded demo profile
+    if (email.trim().toLowerCase() === "demo@hoopqueue.app") {
+      const demoRes = await fetch(new URL("/api/users/demo", getApiUrl()).toString());
+      if (demoRes.ok) {
+        const demoProfile: UserProfile = await demoRes.json();
+        setProfile(demoProfile);
+        await AsyncStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(demoProfile));
+        return;
+      }
+    }
     const userId = profile?.userId ?? forceUserId ?? generateUserId();
     const newProfile: UserProfile = { userId, username, handle: handle || undefined, email, phone: phone || undefined, skillLevel };
     setProfile(newProfile);

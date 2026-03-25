@@ -1992,6 +1992,19 @@ async function registerRoutes(app2) {
       res.status(500).json({ message: "Server error" });
     }
   });
+  app2.get("/api/users/demo", async (_req, res) => {
+    try {
+      const result = await pool.query(
+        `SELECT user_id, username, handle, email, phone, skill_level, avatar_base64
+         FROM users WHERE user_id = 'hq_demo_account' LIMIT 1`
+      );
+      if (result.rows.length === 0) return res.status(404).json({ message: "Demo account not found" });
+      const u = result.rows[0];
+      res.json({ userId: u.user_id, username: u.username, handle: u.handle, email: u.email, phone: u.phone, skillLevel: u.skill_level, avatarBase64: u.avatar_base64 });
+    } catch (err) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
   app2.get("/api/users/search", async (req, res) => {
     const q = (req.query.q ?? "").trim();
     const myId = (req.query.myId ?? "").trim();
