@@ -303,6 +303,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     )
   `);
 
+  // ── Seed demo account DMs if not already present ──────────────────────────
+  try {
+    const dmCheck = await pool.query(
+      `SELECT COUNT(*) FROM direct_messages WHERE sender_id = 'hq_demo_account' OR receiver_id = 'hq_demo_account'`
+    );
+    if (parseInt(dmCheck.rows[0].count) === 0) {
+      const demoMessages = [
+        { sender: "hq_support_001", receiver: "hq_demo_account", text: "Yo nice game yesterday at Venice! You were hooping 🔥" },
+        { sender: "hq_demo_account", receiver: "hq_support_001", text: "Thanks bro! You were raining threes 😤" },
+        { sender: "hq_support_001", receiver: "hq_demo_account", text: "You coming to Ballona Creek courts Saturday?" },
+        { sender: "hq_support_002", receiver: "hq_demo_account", text: "Hey! Saw you on the waitlist at Playa Vista. Wanna run 3v3?" },
+        { sender: "hq_demo_account", receiver: "hq_support_002", text: "For sure! I'll be there around 2pm" },
+        { sender: "hq_support_002", receiver: "hq_demo_account", text: "Perfect, I'll grab 2 more guys. See you there 🏀" },
+        { sender: "hq_support_003", receiver: "hq_demo_account", text: "How long is the wait at Mar Vista right now?" },
+        { sender: "hq_demo_account", receiver: "hq_support_003", text: "About 20 mins. 2 games ahead of us" },
+      ];
+      for (const dm of demoMessages) {
+        await pool.query(
+          `INSERT INTO direct_messages (sender_id, receiver_id, text) VALUES ($1, $2, $3)`,
+          [dm.sender, dm.receiver, dm.text]
+        );
+      }
+    }
+  } catch (e) {
+    console.warn("Demo DM seed skipped:", (e as any)?.message);
+  }
+
   // ── Follows table ─────────────────────────────────────────────────────────
   await pool.query(`
     CREATE TABLE IF NOT EXISTS follows (
