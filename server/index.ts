@@ -217,6 +217,12 @@ function configureExpoAndLanding(app: express.Application) {
     res.status(200).send(fs.readFileSync(termsPath, "utf-8"));
   });
 
+  app.get("/app-review-guide", (_req: Request, res: Response) => {
+    const guidePath = path.resolve(process.cwd(), "server", "templates", "app-review-guide.html");
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.status(200).send(fs.readFileSync(guidePath, "utf-8"));
+  });
+
   app.use("/assets", express.static(path.resolve(process.cwd(), "assets")));
   app.use(express.static(path.resolve(process.cwd(), "static-build")));
 
