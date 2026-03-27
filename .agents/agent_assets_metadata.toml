@@ -60,3 +60,9 @@ id = "3By3B-japzCasvX_ExSci"
 uri = "file://attached_assets/hoopqueue_code.tar.gz"
 type = "unspecified"
 title = "HoopQueue - Full Source Code"
+
+[[outputs]]
+id = "1JHsQsEyyvbST5rdaVzAq"
+uri = "file://attached_assets/HoopQueue_transparent.png"
+type = "image"
+title = "HoopQueue Logo (Transparent)"
