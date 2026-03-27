@@ -198,7 +198,7 @@ const detailStyles = StyleSheet.create({
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { profile, updateProfile, updateAvatar, deleteAccount, loadDemoAccount } = useApp();
+  const { profile, updateProfile, updateAvatar, deleteAccount } = useApp();
   const qc = useQueryClient();
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const stableUserId = useRef(profile?.userId ?? generateUserId());
@@ -391,14 +391,6 @@ export default function ProfileScreen() {
     }
   }
 
-  async function handleLoadDemo() {
-    try {
-      await loadDemoAccount();
-    } catch {
-      Alert.alert("Error", "Could not load demo account. Please try again.");
-    }
-  }
-
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
 
   async function handleDeleteAccount() {
@@ -501,14 +493,6 @@ export default function ProfileScreen() {
               Set your name, email, phone, and skill level to join waitlists and post in the live feed
             </Text>
           </View>
-          <TouchableOpacity
-            style={styles.demoReviewBtn}
-            onPress={handleLoadDemo}
-            activeOpacity={0.85}
-          >
-            <Ionicons name="eye-outline" size={16} color={Colors.accent} />
-            <Text style={styles.demoReviewBtnText}>App Reviewer Demo Access</Text>
-          </TouchableOpacity>
         </>
       )}
 
@@ -1107,23 +1091,6 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: Colors.border,
     marginHorizontal: 16,
-  },
-  demoReviewBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    backgroundColor: "#1a1a2e",
-    borderWidth: 1,
-    borderColor: Colors.accent,
-    borderRadius: 12,
-    paddingVertical: 14,
-    marginBottom: 24,
-  },
-  demoReviewBtnText: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 15,
-    color: Colors.accent,
   },
   deleteAccountBtn: {
     flexDirection: "row",

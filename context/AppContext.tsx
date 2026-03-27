@@ -72,7 +72,6 @@ interface AppContextValue {
   updateProfile: (username: string, handle: string, email: string, phone: string, skillLevel: SkillLevel, forceUserId?: string) => Promise<void>;
   updateAvatar: (base64: string) => Promise<void>;
   deleteAccount: () => Promise<void>;
-  loadDemoAccount: () => Promise<void>;
   refetchCourts: () => Promise<void>;
   fetchCourtWaitlist: (courtId: string) => Promise<void>;
   joinWaitlist: (courtId: string) => Promise<{ ok: boolean; error?: string; currentCourtId?: string }>;
@@ -198,16 +197,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const updateProfile = useCallback(async (username: string, handle: string, email: string, phone: string, skillLevel: SkillLevel, forceUserId?: string) => {
-    // Demo account shortcut — load the pre-seeded demo profile
-    if (email.trim().toLowerCase() === "demo@hoopqueue.app") {
-      const demoRes = await fetch(new URL("/api/users/demo", getApiUrl()).toString());
-      if (demoRes.ok) {
-        const demoProfile: UserProfile = await demoRes.json();
-        setProfile(demoProfile);
-        await AsyncStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(demoProfile));
-        return;
-      }
-    }
     const userId = profile?.userId ?? forceUserId ?? generateUserId();
     const newProfile: UserProfile = { userId, username, handle: handle || undefined, email, phone: phone || undefined, skillLevel };
     setProfile(newProfile);
@@ -378,15 +367,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return US_STATES;
   }, []);
 
-  const loadDemoAccount = useCallback(async () => {
-    const demoRes = await fetch(new URL("/api/users/demo", getApiUrl()).toString());
-    if (demoRes.ok) {
-      const demoProfile: UserProfile = await demoRes.json();
-      setProfile(demoProfile);
-      await AsyncStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(demoProfile));
-    }
-  }, []);
-
   const deleteAccount = useCallback(async () => {
     if (!profile) return;
     await apiRequest("DELETE", `/api/users/${profile.userId}`, {});
@@ -405,7 +385,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     updateProfile,
     updateAvatar,
     deleteAccount,
-    loadDemoAccount,
     refetchCourts,
     fetchCourtWaitlist,
     joinWaitlist,
@@ -421,7 +400,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setStateFilter,
     availableCities,
     availableStates,
-  }), [profile, courts, allCourts, waitlists, isLoaded, userLocation, updateProfile, updateAvatar, deleteAccount, loadDemoAccount, refetchCourts, fetchCourtWaitlist, joinWaitlist, leaveWaitlist, isOnWaitlist, getMyPosition, getDistanceMiles, courtFilter, setCourtFilter, cityFilter, setCityFilter, stateFilter, setStateFilter, availableCities, availableStates]);
+  }), [profile, courts, allCourts, waitlists, isLoaded, userLocation, updateProfile, updateAvatar, deleteAccount, refetchCourts, fetchCourtWaitlist, joinWaitlist, leaveWaitlist, isOnWaitlist, getMyPosition, getDistanceMiles, courtFilter, setCourtFilter, cityFilter, setCityFilter, stateFilter, setStateFilter, availableCities, availableStates]);
 
   return (
     <AppContext.Provider value={value}>
