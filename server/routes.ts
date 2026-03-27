@@ -250,6 +250,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     )
   `);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_base64 TEXT`);
+  // Allow image_base64 to be null when a post uses image_url instead
+  await pool.query(`ALTER TABLE posts ALTER COLUMN image_base64 DROP NOT NULL`).catch(() => {});
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS push_token TEXT`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS device_id TEXT`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_ip TEXT`);
@@ -622,17 +624,138 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Demo account endpoint — returns the pre-seeded HoopQueue demo profile
+  // Demo account endpoint — auto-seeds everything if missing (works on any fresh DB)
   app.get("/api/users/demo", async (_req: Request, res: Response) => {
     try {
-      const result = await pool.query(
+      // ── 1. Find or create the demo account ─────────────────────────────────
+      // First check if a user with the demo email/handle already exists (any user_id)
+      let demoRow = await pool.query(
         `SELECT user_id, username, handle, email, phone, skill_level, avatar_base64
-         FROM users WHERE user_id = 'hq_demo_account' LIMIT 1`
+         FROM users WHERE email = 'demo@hoopqueue.app' OR handle = 'hqdemo' OR user_id = 'hq_demo_account' LIMIT 1`
       );
-      if (result.rows.length === 0) return res.status(404).json({ message: "Demo account not found" });
-      const u = result.rows[0];
+      let demoId: string;
+      if (demoRow.rows.length === 0) {
+        // Create fresh demo account
+        demoId = "hq_demo_account";
+        await pool.query(
+          `INSERT INTO users (user_id, username, handle, email, skill_level, lat, lng)
+           VALUES ($1, 'HoopQueue Demo', 'hqdemo', 'demo@hoopqueue.app', 'Advanced', 34.0195, -118.4912)
+           ON CONFLICT DO NOTHING`,
+          [demoId]
+        );
+      } else {
+        demoId = demoRow.rows[0].user_id;
+      }
+
+      // ── 2. Ensure support users exist ──────────────────────────────────────
+      const supportConfig = [
+        { id: "hq_support_001", username: "Marcus B", handle: "marcusb_hq", email: "hq_s1@hoopqueue.app", skill: "Advanced" },
+        { id: "hq_support_002", username: "Jordan K", handle: "jordank_hq", email: "hq_s2@hoopqueue.app", skill: "Intermediate" },
+        { id: "hq_support_003", username: "DeShawn R", handle: "deshawnr_hq", email: "hq_s3@hoopqueue.app", skill: "Intermediate" },
+        { id: "hq_support_004", username: "Aaliyah T", handle: "aaliyaht_hq", email: "hq_s4@hoopqueue.app", skill: "Beginner" },
+        { id: "hq_support_005", username: "Chris V", handle: "chrisv_hq", email: "hq_s5@hoopqueue.app", skill: "Advanced" },
+      ];
+      const supporters: string[] = [];
+      for (const u of supportConfig) {
+        let existing = await pool.query(`SELECT user_id FROM users WHERE user_id = $1 OR email = $2 LIMIT 1`, [u.id, u.email]);
+        if (existing.rows.length === 0) {
+          await pool.query(
+            `INSERT INTO users (user_id, username, handle, email, skill_level, lat, lng)
+             VALUES ($1, $2, $3, $4, $5, 34.0195, -118.4912) ON CONFLICT DO NOTHING`,
+            [u.id, u.username, u.handle, u.email, u.skill]
+          ).catch(() =>
+            pool.query(
+              `INSERT INTO users (user_id, username, email, skill_level, lat, lng)
+               VALUES ($1, $2, $3, $4, 34.0195, -118.4912) ON CONFLICT DO NOTHING`,
+              [u.id, u.username, u.email, u.skill]
+            ).catch(() => {})
+          );
+          supporters.push(u.id);
+        } else {
+          supporters.push(existing.rows[0].user_id);
+        }
+      }
+
+      // ── 3. Ensure follows exist ─────────────────────────────────────────────
+      for (const sid of supporters) {
+        await pool.query(`INSERT INTO follows (follower_id, following_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [sid, demoId]);
+        await pool.query(`INSERT INTO follows (follower_id, following_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [demoId, sid]);
+      }
+
+      // ── 4. Ensure demo posts exist ──────────────────────────────────────────
+      const postCheck = await pool.query(`SELECT COUNT(*) FROM posts WHERE user_id = $1`, [demoId]);
+      if (parseInt(postCheck.rows[0].count) === 0) {
+        const demoPosts = [
+          { id: "hq_post_01", caption: "Morning runs at Venice Beach 🏀🌅 court is busiest before 9am", court: "Venice Beach Courts", courtId: "hq_court_venice" },
+          { id: "hq_post_02", caption: "Called game 🔥 went 8-0 at Mar Vista today. Squad is locked in", court: null, courtId: null },
+          { id: "hq_post_03", caption: "Outdoor hoops hit different when the weather is perfect 😤", court: "Ballona Creek Courts", courtId: "hq_court_ballona" },
+          { id: "hq_post_04", caption: "Waitlist was 6 deep but we still got 3 runs in 💪 patience pays", court: null, courtId: null },
+          { id: "hq_post_05", caption: "Post-game stretches and good vibes only 🧘 recovery is real", court: "Playa Vista Rec", courtId: "hq_court_playa" },
+          { id: "hq_post_06", caption: "New kicks on the court. Squad said I should've saved the money 😂", court: null, courtId: null },
+          { id: "hq_post_07", caption: "Hit 12/15 from three in warmups then bricked everything in the game 🤦", court: "Culver City Park Courts", courtId: "hq_court_culver" },
+          { id: "hq_post_08", caption: "Sunday league. Refs are still terrible but the vibes are immaculate 🏆", court: null, courtId: null },
+        ];
+        for (let i = 0; i < demoPosts.length; i++) {
+          const p = demoPosts[i];
+          const imgUrl = `https://picsum.photos/seed/hq_court${i + 1}/600/600`;
+          await pool.query(
+            `INSERT INTO posts (id, user_id, username, image_url, image_base64, caption, court_id, court_name, created_at)
+             VALUES ($1, $2, 'HoopQueue Demo', $3, '', $4, $5, $6, NOW() - (random() * interval '7 days'))
+             ON CONFLICT (id) DO NOTHING`,
+            [p.id, demoId, imgUrl, p.caption, p.courtId, p.court]
+          );
+          for (const sid of supporters.slice(0, 3)) {
+            await pool.query(`INSERT INTO post_likes (post_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [p.id, sid]);
+          }
+        }
+        // Seed posts from support users so feed is populated
+        const supportPosts = [
+          { id: "hq_spost_01", uidx: 0, username: "Marcus B", caption: "Back to back wins today. Feeling unbeatable 🔥" },
+          { id: "hq_spost_02", uidx: 1, username: "Jordan K", caption: "Early morning court time before work hits different 🌄" },
+          { id: "hq_spost_03", uidx: 2, username: "DeShawn R", caption: "Anyone tryna run this weekend? Venice is always popping 🏀" },
+        ];
+        for (let i = 0; i < supportPosts.length; i++) {
+          const p = supportPosts[i];
+          const imgUrl = `https://picsum.photos/seed/hq_sp${i + 1}/600/600`;
+          await pool.query(
+            `INSERT INTO posts (id, user_id, username, image_url, image_base64, caption, created_at)
+             VALUES ($1, $2, $3, $4, '', $5, NOW() - (random() * interval '3 days'))
+             ON CONFLICT (id) DO NOTHING`,
+            [p.id, supporters[p.uidx], p.username, imgUrl, p.caption]
+          );
+          await pool.query(`INSERT INTO post_likes (post_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [p.id, demoId]);
+        }
+      }
+
+      // ── 5. Ensure DMs exist ─────────────────────────────────────────────────
+      const dmCheck = await pool.query(
+        `SELECT COUNT(*) FROM direct_messages WHERE sender_id = $1 OR receiver_id = $1`, [demoId]
+      );
+      if (parseInt(dmCheck.rows[0].count) === 0) {
+        const demoMessages = [
+          { sender: supporters[0], receiver: demoId, text: "Yo nice game yesterday at Venice! You were hooping 🔥" },
+          { sender: demoId, receiver: supporters[0], text: "Thanks bro! You were raining threes 😤" },
+          { sender: supporters[0], receiver: demoId, text: "You coming to Ballona Creek courts Saturday?" },
+          { sender: supporters[1], receiver: demoId, text: "Hey! Saw you on the waitlist at Playa Vista. Wanna run 3v3?" },
+          { sender: demoId, receiver: supporters[1], text: "For sure! I'll be there around 2pm" },
+          { sender: supporters[1], receiver: demoId, text: "Perfect, I'll grab 2 more guys. See you there 🏀" },
+          { sender: supporters[2], receiver: demoId, text: "How long is the wait at Mar Vista right now?" },
+          { sender: demoId, receiver: supporters[2], text: "About 20 mins. 2 games ahead of us" },
+        ];
+        for (const dm of demoMessages) {
+          await pool.query(`INSERT INTO direct_messages (sender_id, receiver_id, text) VALUES ($1, $2, $3)`, [dm.sender, dm.receiver, dm.text]);
+        }
+      }
+
+      // ── 6. Return the demo profile ──────────────────────────────────────────
+      demoRow = await pool.query(
+        `SELECT user_id, username, handle, email, phone, skill_level, avatar_base64
+         FROM users WHERE user_id = $1 LIMIT 1`, [demoId]
+      );
+      const u = demoRow.rows[0];
       res.json({ userId: u.user_id, username: u.username, handle: u.handle, email: u.email, phone: u.phone, skillLevel: u.skill_level, avatarBase64: u.avatar_base64 });
     } catch (err) {
+      console.error("Demo endpoint error:", err);
       res.status(500).json({ message: "Server error" });
     }
   });
