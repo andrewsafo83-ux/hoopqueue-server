@@ -223,6 +223,13 @@ function configureExpoAndLanding(app: express.Application) {
     res.status(200).send(fs.readFileSync(guidePath, "utf-8"));
   });
 
+  app.get("/hoopqueue-logo.pdf", (_req: Request, res: Response) => {
+    const pdfPath = path.resolve(process.cwd(), "server", "templates", "HoopQueue_logo.pdf");
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", "attachment; filename=HoopQueue_logo.pdf");
+    res.status(200).send(fs.readFileSync(pdfPath));
+  });
+
   app.use("/assets", express.static(path.resolve(process.cwd(), "assets")));
   app.use(express.static(path.resolve(process.cwd(), "static-build")));
 
