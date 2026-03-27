@@ -66,3 +66,9 @@ id = "1JHsQsEyyvbST5rdaVzAq"
 uri = "file://attached_assets/HoopQueue_transparent.png"
 type = "image"
 title = "HoopQueue Logo (Transparent)"
+
+[[outputs]]
+id = "2V4k6iZeI04agPM1lDOhf"
+uri = "file://attached_assets/HoopQueue_transparent.pdf"
+type = "pdf"
+title = "HoopQueue Logo (PDF)"
