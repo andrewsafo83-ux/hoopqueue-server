@@ -15,7 +15,7 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.hoopqueue.app",
+      "bundleIdentifier": "app.replit.hoopqueue",
       "buildNumber": "1",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "HoopQueue uses your location to show nearby basketball courts.",
