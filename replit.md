@@ -28,9 +28,28 @@ A mobile app for finding basketball courts across the entire United States. User
 - Seeding: on startup, server auto-seeds CA courts (checks for `venice-beach` ID),
   then inserts all US courts if no non-CA court exists
 
+## Authentication
+- Instagram-style auth screen (`app/auth.tsx`) gates the entire app
+- Users register with username + email + password (bcrypt hashed, min 6 chars)
+- Login works with email, username, OR handle
+- Forgot password: 6-digit code sent via email (SMTP via nodemailer) with 15min expiry
+- Session persisted in AsyncStorage; logout clears everything
+- `login()`, `register()`, `logout()` methods in AppContext
+- Apple Review demo credentials: username `hqdemo`, password `HoopQueue2024!`
+- Demo account auto-created on server startup if missing (email: demo@hoopqueue.app)
+- Email reset requires SMTP env vars: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `EMAIL_FROM`
+
+## Auth API Endpoints
+- `POST /api/auth/register` — create account with bcrypt password
+- `POST /api/auth/login` — validate credentials (checks email, username, handle)
+- `POST /api/auth/forgot-password` — send 6-digit code to email
+- `POST /api/auth/reset-password` — validate code, update password
+- `POST /api/auth/change-password` — change password for logged-in user
+
 ## Database Schema (Supabase)
 - **courts**: real OpenStreetMap courts for all US states
-- **users**: `id`, `user_id` (unique), `username`, `email`, `skill_level`, `created_at`
+- **users**: `id`, `user_id` (unique), `username`, `handle`, `email`, `password_hash`, `skill_level`, `created_at`
+- **password_reset_codes**: `user_id`, `code`, `expires_at`, `used`
 - **friendships**: `requester_id`, `addressee_id`, `status` (pending/accepted)
 - **direct_messages**: `sender_id`, `receiver_id`, `text`, `created_at`
 - **dm_read_receipts**: `user_id`, `partner_id`, `last_read`

@@ -10,12 +10,12 @@ import { Stack, useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import * as Notifications from "expo-notifications";
 import React, { useEffect } from "react";
-import { Platform } from "react-native";
+import { ActivityIndicator, Platform, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { queryClient } from "@/lib/query-client";
-import { AppProvider } from "@/context/AppContext";
+import { AppProvider, useApp } from "@/context/AppContext";
 import Colors from "@/constants/colors";
 
 SplashScreen.preventAutoHideAsync();
@@ -32,6 +32,14 @@ if (Platform.OS !== "web") {
 
 function RootLayoutNav() {
   const router = useRouter();
+  const { isLoaded, profile } = useApp();
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    if (!profile) {
+      router.replace("/auth" as never);
+    }
+  }, [isLoaded, profile]);
 
   useEffect(() => {
     if (Platform.OS === "web") return;
@@ -46,6 +54,14 @@ function RootLayoutNav() {
     return () => sub.remove();
   }, [router]);
 
+  if (!isLoaded) {
+    return (
+      <View style={{ flex: 1, backgroundColor: Colors.background, justifyContent: "center", alignItems: "center" }}>
+        <ActivityIndicator color={Colors.accent} size="large" />
+      </View>
+    );
+  }
+
   return (
     <Stack
       screenOptions={{
@@ -56,6 +72,7 @@ function RootLayoutNav() {
       }}
     >
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen name="auth" options={{ headerShown: false, animation: "fade" }} />
       <Stack.Screen
         name="court/[id]"
         options={{

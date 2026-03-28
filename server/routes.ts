@@ -3,8 +3,42 @@ import { createServer, type Server } from "node:http";
 import { Pool } from "pg";
 import * as fs from "fs";
 import * as path from "path";
+import * as bcrypt from "bcryptjs";
+import * as nodemailer from "nodemailer";
 import { CA_COURTS } from "./ca-courts";
 import { US_COURTS } from "./us-courts";
+
+// ─── Email ────────────────────────────────────────────────────────────────────
+
+function getMailTransporter() {
+  if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) return null;
+  return nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: parseInt(process.env.SMTP_PORT ?? "587"),
+    secure: process.env.SMTP_SECURE === "true",
+    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+  });
+}
+
+async function sendResetCodeEmail(email: string, code: string): Promise<void> {
+  const transporter = getMailTransporter();
+  if (!transporter) {
+    console.log(`[HoopQueue] Password reset code for ${email}: ${code}`);
+    return;
+  }
+  await transporter.sendMail({
+    from: process.env.EMAIL_FROM ?? `"HoopQueue" <noreply@hoopqueue.app>`,
+    to: email,
+    subject: "Your HoopQueue password reset code",
+    text: `Your password reset code is: ${code}\n\nThis code expires in 15 minutes.`,
+    html: `<div style="font-family:sans-serif;max-width:400px;margin:0 auto;padding:24px;">
+      <h2 style="color:#F97316;">HoopQueue</h2>
+      <p>Your password reset code is:</p>
+      <h1 style="letter-spacing:8px;font-size:36px;color:#111;">${code}</h1>
+      <p style="color:#666;">This code expires in 15 minutes. If you didn't request this, ignore this email.</p>
+    </div>`,
+  });
+}
 
 // ─── Database ─────────────────────────────────────────────────────────────────
 
@@ -260,6 +294,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS handle TEXT`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS lat DOUBLE PRECISION`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS lng DOUBLE PRECISION`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT`);
+
+  // ── Password reset codes table ─────────────────────────────────────────────
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS password_reset_codes (
+      id SERIAL PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      code TEXT NOT NULL,
+      expires_at TIMESTAMP NOT NULL,
+      used BOOLEAN DEFAULT FALSE,
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
 
   // Enforce unique usernames (case-insensitive) at the DB level
   try {
@@ -330,6 +377,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   } catch (e) {
     console.warn("Demo DM seed skipped:", (e as any)?.message);
+  }
+
+  // ── Ensure Apple Review demo account exists with password ────────────────────
+  try {
+    const demoHash = await bcrypt.hash("HoopQueue2024!", 10);
+    const demoRow = await pool.query(
+      `SELECT user_id, password_hash FROM users WHERE email = 'demo@hoopqueue.app' LIMIT 1`
+    );
+    if (demoRow.rows.length === 0) {
+      await pool.query(
+        `INSERT INTO users (user_id, username, handle, email, skill_level, password_hash, lat, lng, created_at, updated_at)
+         VALUES ('hq_apple_review', 'HoopQueue Demo', 'hqdemo', 'demo@hoopqueue.app', 'Advanced', $1, 34.0195, -118.4912, NOW(), NOW())
+         ON CONFLICT DO NOTHING`,
+        [demoHash]
+      );
+      console.log("✓ Apple review demo account created");
+    } else if (!demoRow.rows[0].password_hash) {
+      await pool.query(`UPDATE users SET password_hash = $1 WHERE user_id = $2`, [demoHash, demoRow.rows[0].user_id]);
+      console.log("✓ Demo account password set");
+    }
+  } catch (e) {
+    console.warn("Demo password setup skipped:", (e as any)?.message);
   }
 
   // ── Follows table ─────────────────────────────────────────────────────────
@@ -556,6 +625,189 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (err) {
       console.error("Admin all-users error:", err);
       res.status(500).json({ message: "Failed to fetch users" });
+    }
+  });
+
+  // ── Auth ───────────────────────────────────────────────────────────────────
+
+  app.post("/api/auth/register", async (req: Request, res: Response) => {
+    const { username, email, password, skillLevel } = req.body;
+    if (!username || !email || !password) {
+      return res.status(400).json({ message: "Username, email, and password are required." });
+    }
+    if (!/^[a-zA-Z0-9_]{3,30}$/.test(username.trim())) {
+      return res.status(400).json({ message: "Username can only contain letters, numbers, and underscores (3–30 chars)." });
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      return res.status(400).json({ message: "Invalid email address." });
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ message: "Password must be at least 6 characters." });
+    }
+    try {
+      const existing = await pool.query(
+        `SELECT user_id FROM users WHERE LOWER(email) = LOWER($1) OR LOWER(username) = LOWER($2) LIMIT 1`,
+        [email.trim(), username.trim()]
+      );
+      if (existing.rows.length > 0) {
+        return res.status(409).json({ message: "That username or email is already taken." });
+      }
+      const passwordHash = await bcrypt.hash(password, 10);
+      const userId = Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
+      const result = await pool.query(
+        `INSERT INTO users (user_id, username, handle, email, skill_level, password_hash, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+         RETURNING user_id, username, handle, email, skill_level, avatar_base64`,
+        [userId, username.trim(), username.trim().toLowerCase(), email.trim().toLowerCase(), skillLevel ?? "Intermediate", passwordHash]
+      );
+      const user = result.rows[0];
+      res.status(201).json({
+        userId: user.user_id,
+        username: user.username,
+        handle: user.handle,
+        email: user.email,
+        skillLevel: user.skill_level,
+        avatarBase64: user.avatar_base64 ?? null,
+      });
+    } catch (err: any) {
+      if (err.code === "23505") {
+        return res.status(409).json({ message: "That username or email is already taken." });
+      }
+      console.error("Register error:", err);
+      res.status(500).json({ message: "Server error. Please try again." });
+    }
+  });
+
+  app.post("/api/auth/login", async (req: Request, res: Response) => {
+    const { emailOrUsername, password } = req.body;
+    if (!emailOrUsername || !password) {
+      return res.status(400).json({ message: "Email/username and password are required." });
+    }
+    try {
+      const result = await pool.query(
+        `SELECT user_id, username, handle, email, skill_level, avatar_base64, password_hash, phone
+         FROM users WHERE LOWER(email) = LOWER($1) OR LOWER(username) = LOWER($1) OR LOWER(handle) = LOWER($1) LIMIT 1`,
+        [emailOrUsername.trim()]
+      );
+      if (result.rows.length === 0) {
+        return res.status(401).json({ message: "No account found with that email or username." });
+      }
+      const user = result.rows[0];
+      if (!user.password_hash) {
+        return res.status(403).json({ message: "This account has no password set. Use 'Forgot Password' to set one.", code: "no_password" });
+      }
+      const valid = await bcrypt.compare(password, user.password_hash);
+      if (!valid) {
+        return res.status(401).json({ message: "Incorrect password." });
+      }
+      await pool.query(`UPDATE users SET last_seen_at = NOW() WHERE user_id = $1`, [user.user_id]);
+      res.json({
+        userId: user.user_id,
+        username: user.username,
+        handle: user.handle,
+        email: user.email,
+        skillLevel: user.skill_level,
+        avatarBase64: user.avatar_base64 ?? null,
+        phone: user.phone ?? null,
+      });
+    } catch (err) {
+      console.error("Login error:", err);
+      res.status(500).json({ message: "Server error. Please try again." });
+    }
+  });
+
+  app.post("/api/auth/forgot-password", async (req: Request, res: Response) => {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ message: "Email is required." });
+    try {
+      const result = await pool.query(
+        `SELECT user_id, email FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`,
+        [email.trim()]
+      );
+      if (result.rows.length === 0) {
+        return res.json({ ok: true });
+      }
+      const user = result.rows[0];
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+      await pool.query(
+        `UPDATE password_reset_codes SET used = TRUE WHERE user_id = $1 AND used = FALSE`,
+        [user.user_id]
+      );
+      await pool.query(
+        `INSERT INTO password_reset_codes (user_id, code, expires_at) VALUES ($1, $2, $3)`,
+        [user.user_id, code, expiresAt]
+      );
+      try {
+        await sendResetCodeEmail(user.email, code);
+      } catch (emailErr) {
+        console.error("Email send failed:", emailErr);
+      }
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("Forgot password error:", err);
+      res.status(500).json({ message: "Server error." });
+    }
+  });
+
+  app.post("/api/auth/reset-password", async (req: Request, res: Response) => {
+    const { email, code, newPassword } = req.body;
+    if (!email || !code || !newPassword) {
+      return res.status(400).json({ message: "Email, code, and new password are required." });
+    }
+    if (newPassword.length < 6) {
+      return res.status(400).json({ message: "Password must be at least 6 characters." });
+    }
+    try {
+      const userResult = await pool.query(
+        `SELECT user_id FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`,
+        [email.trim()]
+      );
+      if (userResult.rows.length === 0) {
+        return res.status(400).json({ message: "No account found with that email." });
+      }
+      const userId = userResult.rows[0].user_id;
+      const codeResult = await pool.query(
+        `SELECT id FROM password_reset_codes
+         WHERE user_id = $1 AND code = $2 AND used = FALSE AND expires_at > NOW()
+         ORDER BY created_at DESC LIMIT 1`,
+        [userId, code.trim()]
+      );
+      if (codeResult.rows.length === 0) {
+        return res.status(400).json({ message: "Invalid or expired code. Please request a new one." });
+      }
+      const passwordHash = await bcrypt.hash(newPassword, 10);
+      await pool.query(`UPDATE users SET password_hash = $1, updated_at = NOW() WHERE user_id = $2`, [passwordHash, userId]);
+      await pool.query(`UPDATE password_reset_codes SET used = TRUE WHERE id = $1`, [codeResult.rows[0].id]);
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("Reset password error:", err);
+      res.status(500).json({ message: "Server error." });
+    }
+  });
+
+  app.post("/api/auth/change-password", async (req: Request, res: Response) => {
+    const { userId, currentPassword, newPassword } = req.body;
+    if (!userId || !currentPassword || !newPassword) {
+      return res.status(400).json({ message: "All fields are required." });
+    }
+    if (newPassword.length < 6) {
+      return res.status(400).json({ message: "New password must be at least 6 characters." });
+    }
+    try {
+      const result = await pool.query(`SELECT password_hash FROM users WHERE user_id = $1 LIMIT 1`, [userId]);
+      if (result.rows.length === 0) return res.status(404).json({ message: "User not found." });
+      const user = result.rows[0];
+      if (!user.password_hash) return res.status(400).json({ message: "No password set." });
+      const valid = await bcrypt.compare(currentPassword, user.password_hash);
+      if (!valid) return res.status(401).json({ message: "Current password is incorrect." });
+      const passwordHash = await bcrypt.hash(newPassword, 10);
+      await pool.query(`UPDATE users SET password_hash = $1, updated_at = NOW() WHERE user_id = $2`, [passwordHash, userId]);
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("Change password error:", err);
+      res.status(500).json({ message: "Server error." });
     }
   });
 

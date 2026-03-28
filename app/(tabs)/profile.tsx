@@ -198,7 +198,7 @@ const detailStyles = StyleSheet.create({
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { profile, updateProfile, updateAvatar, deleteAccount } = useApp();
+  const { profile, updateProfile, updateAvatar, deleteAccount, logout } = useApp();
   const qc = useQueryClient();
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const stableUserId = useRef(profile?.userId ?? generateUserId());
@@ -805,6 +805,22 @@ export default function ProfileScreen() {
 
       {profile && (
         <TouchableOpacity
+          style={styles.logoutBtn}
+          onPress={() => {
+            Alert.alert("Log Out", "Are you sure you want to log out?", [
+              { text: "Cancel", style: "cancel" },
+              { text: "Log Out", style: "destructive", onPress: () => logout() },
+            ]);
+          }}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="log-out-outline" size={16} color={Colors.textSecondary} />
+          <Text style={styles.logoutText}>Log Out</Text>
+        </TouchableOpacity>
+      )}
+
+      {profile && (
+        <TouchableOpacity
           style={styles.deleteAccountBtn}
           onPress={handleDeleteAccount}
           disabled={isDeletingAccount}
@@ -1091,6 +1107,22 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: Colors.border,
     marginHorizontal: 16,
+  },
+  logoutBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    marginHorizontal: 20,
+    marginTop: 16,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: Colors.card,
+  },
+  logoutText: {
+    fontSize: 15,
+    color: Colors.textSecondary,
+    fontFamily: "Inter_500Medium",
   },
   deleteAccountBtn: {
     flexDirection: "row",

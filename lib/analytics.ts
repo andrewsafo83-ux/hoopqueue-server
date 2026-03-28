@@ -3,6 +3,8 @@ import { getApiUrl } from "@/lib/query-client";
 
 export type AnalyticsEvent =
   | "app_open"
+  | "login"
+  | "register"
   | "profile_saved"
   | "court_view"
   | "player_checkin"

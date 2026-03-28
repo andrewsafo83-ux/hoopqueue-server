@@ -69,6 +69,9 @@ interface AppContextValue {
   waitlists: Record<string, WaitlistEntry[]>;
   isLoaded: boolean;
   userLocation: UserLocation | null;
+  login: (emailOrUsername: string, password: string) => Promise<void>;
+  register: (username: string, email: string, password: string, skillLevel: SkillLevel) => Promise<void>;
+  logout: () => Promise<void>;
   updateProfile: (username: string, handle: string, email: string, phone: string, skillLevel: SkillLevel, forceUserId?: string) => Promise<void>;
   updateAvatar: (base64: string) => Promise<void>;
   deleteAccount: () => Promise<void>;
@@ -194,6 +197,57 @@ export function AppProvider({ children }: { children: ReactNode }) {
       } catch {}
     }
     fetchLocation();
+  }, []);
+
+  const login = useCallback(async (emailOrUsername: string, password: string) => {
+    const url = new URL("/api/auth/login", getApiUrl());
+    const res = await fetch(url.toString(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ emailOrUsername, password }),
+    });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.message ?? "Login failed");
+    const newProfile: UserProfile = {
+      userId: body.userId,
+      username: body.username,
+      handle: body.handle ?? undefined,
+      email: body.email,
+      phone: body.phone ?? undefined,
+      skillLevel: body.skillLevel ?? "Intermediate",
+      avatarBase64: body.avatarBase64 ?? undefined,
+    };
+    setProfile(newProfile);
+    await AsyncStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(newProfile));
+    track("login", newProfile.userId, { platform: Platform.OS });
+  }, []);
+
+  const register = useCallback(async (username: string, email: string, password: string, skillLevel: SkillLevel) => {
+    const url = new URL("/api/auth/register", getApiUrl());
+    const res = await fetch(url.toString(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, email, password, skillLevel }),
+    });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.message ?? "Registration failed");
+    const newProfile: UserProfile = {
+      userId: body.userId,
+      username: body.username,
+      handle: body.handle ?? undefined,
+      email: body.email,
+      skillLevel: body.skillLevel ?? skillLevel,
+      avatarBase64: body.avatarBase64 ?? undefined,
+    };
+    setProfile(newProfile);
+    await AsyncStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(newProfile));
+    track("register", newProfile.userId, { platform: Platform.OS });
+  }, []);
+
+  const logout = useCallback(async () => {
+    await AsyncStorage.multiRemove([STORAGE_KEYS.PROFILE, STORAGE_KEYS.WAITLISTS]);
+    setProfile(null);
+    setWaitlists({});
   }, []);
 
   const updateProfile = useCallback(async (username: string, handle: string, email: string, phone: string, skillLevel: SkillLevel, forceUserId?: string) => {
@@ -382,6 +436,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     waitlists,
     isLoaded,
     userLocation,
+    login,
+    register,
+    logout,
     updateProfile,
     updateAvatar,
     deleteAccount,
@@ -400,7 +457,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setStateFilter,
     availableCities,
     availableStates,
-  }), [profile, courts, allCourts, waitlists, isLoaded, userLocation, updateProfile, updateAvatar, deleteAccount, refetchCourts, fetchCourtWaitlist, joinWaitlist, leaveWaitlist, isOnWaitlist, getMyPosition, getDistanceMiles, courtFilter, setCourtFilter, cityFilter, setCityFilter, stateFilter, setStateFilter, availableCities, availableStates]);
+  }), [profile, courts, allCourts, waitlists, isLoaded, userLocation, login, register, logout, updateProfile, updateAvatar, deleteAccount, refetchCourts, fetchCourtWaitlist, joinWaitlist, leaveWaitlist, isOnWaitlist, getMyPosition, getDistanceMiles, courtFilter, setCourtFilter, cityFilter, setCityFilter, stateFilter, setStateFilter, availableCities, availableStates]);
 
   return (
     <AppContext.Provider value={value}>
