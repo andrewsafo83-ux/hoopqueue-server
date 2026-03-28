@@ -639,7 +639,7 @@ export default function FeedScreen() {
       return apiRequest("POST", `/api/posts/${postId}/like`, { userId });
     },
     onMutate: async (postId) => {
-      await qc.cancelQueries({ queryKey: ["/api/feed", userId] });
+      qc.cancelQueries({ queryKey: ["/api/feed", userId] });
       const prev = qc.getQueryData<Post[]>(["/api/feed", userId]);
       qc.setQueryData<Post[]>(["/api/feed", userId], (old = []) =>
         old.map((p) =>
