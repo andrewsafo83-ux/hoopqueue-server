@@ -6,6 +6,8 @@ import { createServer } from "node:http";
 import { Pool } from "pg";
 import * as fs from "fs";
 import * as path from "path";
+import * as bcrypt from "bcryptjs";
+import * as nodemailer from "nodemailer";
 
 // server/ca-courts.ts
 var CA_COURTS = [
@@ -1459,6 +1461,36 @@ var US_COURTS = [
 ];
 
 // server/routes.ts
+function getMailTransporter() {
+  if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) return null;
+  return nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: parseInt(process.env.SMTP_PORT ?? "587"),
+    secure: process.env.SMTP_SECURE === "true",
+    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
+  });
+}
+async function sendResetCodeEmail(email, code) {
+  const transporter = getMailTransporter();
+  if (!transporter) {
+    console.log(`[HoopQueue] Password reset code for ${email}: ${code}`);
+    return;
+  }
+  await transporter.sendMail({
+    from: process.env.EMAIL_FROM ?? `"HoopQueue" <noreply@hoopqueue.app>`,
+    to: email,
+    subject: "Your HoopQueue password reset code",
+    text: `Your password reset code is: ${code}
+
+This code expires in 15 minutes.`,
+    html: `<div style="font-family:sans-serif;max-width:400px;margin:0 auto;padding:24px;">
+      <h2 style="color:#F97316;">HoopQueue</h2>
+      <p>Your password reset code is:</p>
+      <h1 style="letter-spacing:8px;font-size:36px;color:#111;">${code}</h1>
+      <p style="color:#666;">This code expires in 15 minutes. If you didn't request this, ignore this email.</p>
+    </div>`
+  });
+}
 var pool = new Pool({ connectionString: process.env.SUPABASE_DB_URL });
 var SUPABASE_URL = process.env.SUPABASE_URL ?? "";
 var SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
@@ -1688,6 +1720,8 @@ async function registerRoutes(app2) {
     )
   `);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_base64 TEXT`);
+  await pool.query(`ALTER TABLE posts ALTER COLUMN image_base64 DROP NOT NULL`).catch(() => {
+  });
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS push_token TEXT`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS device_id TEXT`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_ip TEXT`);
@@ -1696,6 +1730,17 @@ async function registerRoutes(app2) {
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS handle TEXT`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS lat DOUBLE PRECISION`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS lng DOUBLE PRECISION`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS password_reset_codes (
+      id SERIAL PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      code TEXT NOT NULL,
+      expires_at TIMESTAMP NOT NULL,
+      used BOOLEAN DEFAULT FALSE,
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
   try {
     await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS users_username_lower_idx ON users (LOWER(username))`);
   } catch (e) {
@@ -1713,6 +1758,70 @@ async function registerRoutes(app2) {
       UNIQUE(court_id, user_id)
     )
   `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS blocked_users (
+      id SERIAL PRIMARY KEY,
+      blocker_id TEXT NOT NULL,
+      blocked_id TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT NOW(),
+      UNIQUE(blocker_id, blocked_id)
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS reported_posts (
+      id SERIAL PRIMARY KEY,
+      reporter_id TEXT NOT NULL,
+      post_id TEXT NOT NULL,
+      reason TEXT,
+      created_at TIMESTAMP DEFAULT NOW(),
+      UNIQUE(reporter_id, post_id)
+    )
+  `);
+  try {
+    const dmCheck = await pool.query(
+      `SELECT COUNT(*) FROM direct_messages WHERE sender_id = 'hq_demo_account' OR receiver_id = 'hq_demo_account'`
+    );
+    if (parseInt(dmCheck.rows[0].count) === 0) {
+      const demoMessages = [
+        { sender: "hq_support_001", receiver: "hq_demo_account", text: "Yo nice game yesterday at Venice! You were hooping \u{1F525}" },
+        { sender: "hq_demo_account", receiver: "hq_support_001", text: "Thanks bro! You were raining threes \u{1F624}" },
+        { sender: "hq_support_001", receiver: "hq_demo_account", text: "You coming to Ballona Creek courts Saturday?" },
+        { sender: "hq_support_002", receiver: "hq_demo_account", text: "Hey! Saw you on the waitlist at Playa Vista. Wanna run 3v3?" },
+        { sender: "hq_demo_account", receiver: "hq_support_002", text: "For sure! I'll be there around 2pm" },
+        { sender: "hq_support_002", receiver: "hq_demo_account", text: "Perfect, I'll grab 2 more guys. See you there \u{1F3C0}" },
+        { sender: "hq_support_003", receiver: "hq_demo_account", text: "How long is the wait at Mar Vista right now?" },
+        { sender: "hq_demo_account", receiver: "hq_support_003", text: "About 20 mins. 2 games ahead of us" }
+      ];
+      for (const dm of demoMessages) {
+        await pool.query(
+          `INSERT INTO direct_messages (sender_id, receiver_id, text) VALUES ($1, $2, $3)`,
+          [dm.sender, dm.receiver, dm.text]
+        );
+      }
+    }
+  } catch (e) {
+    console.warn("Demo DM seed skipped:", e?.message);
+  }
+  try {
+    const demoHash = await bcrypt.hash("HoopQueue2024!", 10);
+    const demoRow = await pool.query(
+      `SELECT user_id, password_hash FROM users WHERE email = 'demo@hoopqueue.app' LIMIT 1`
+    );
+    if (demoRow.rows.length === 0) {
+      await pool.query(
+        `INSERT INTO users (user_id, username, handle, email, skill_level, password_hash, lat, lng, created_at, updated_at)
+         VALUES ('hq_apple_review', 'HoopQueue Demo', 'hqdemo', 'demo@hoopqueue.app', 'Advanced', $1, 34.0195, -118.4912, NOW(), NOW())
+         ON CONFLICT DO NOTHING`,
+        [demoHash]
+      );
+      console.log("\u2713 Apple review demo account created");
+    } else if (!demoRow.rows[0].password_hash) {
+      await pool.query(`UPDATE users SET password_hash = $1 WHERE user_id = $2`, [demoHash, demoRow.rows[0].user_id]);
+      console.log("\u2713 Demo account password set");
+    }
+  } catch (e) {
+    console.warn("Demo password setup skipped:", e?.message);
+  }
   await pool.query(`
     CREATE TABLE IF NOT EXISTS follows (
       id SERIAL PRIMARY KEY,
@@ -1932,6 +2041,182 @@ async function registerRoutes(app2) {
       res.status(500).json({ message: "Failed to fetch users" });
     }
   });
+  app2.post("/api/auth/register", async (req, res) => {
+    const { username, email, password, skillLevel } = req.body;
+    if (!username || !email || !password) {
+      return res.status(400).json({ message: "Username, email, and password are required." });
+    }
+    if (!/^[a-zA-Z0-9_]{3,30}$/.test(username.trim())) {
+      return res.status(400).json({ message: "Username can only contain letters, numbers, and underscores (3\u201330 chars)." });
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      return res.status(400).json({ message: "Invalid email address." });
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ message: "Password must be at least 6 characters." });
+    }
+    try {
+      const existing = await pool.query(
+        `SELECT user_id FROM users WHERE LOWER(email) = LOWER($1) OR LOWER(username) = LOWER($2) LIMIT 1`,
+        [email.trim(), username.trim()]
+      );
+      if (existing.rows.length > 0) {
+        return res.status(409).json({ message: "That username or email is already taken." });
+      }
+      const passwordHash = await bcrypt.hash(password, 10);
+      const userId = Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
+      const result = await pool.query(
+        `INSERT INTO users (user_id, username, handle, email, skill_level, password_hash, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+         RETURNING user_id, username, handle, email, skill_level, avatar_base64`,
+        [userId, username.trim(), username.trim().toLowerCase(), email.trim().toLowerCase(), skillLevel ?? "Intermediate", passwordHash]
+      );
+      const user = result.rows[0];
+      res.status(201).json({
+        userId: user.user_id,
+        username: user.username,
+        handle: user.handle,
+        email: user.email,
+        skillLevel: user.skill_level,
+        avatarBase64: user.avatar_base64 ?? null
+      });
+    } catch (err) {
+      if (err.code === "23505") {
+        return res.status(409).json({ message: "That username or email is already taken." });
+      }
+      console.error("Register error:", err);
+      res.status(500).json({ message: "Server error. Please try again." });
+    }
+  });
+  app2.post("/api/auth/login", async (req, res) => {
+    const { emailOrUsername, password } = req.body;
+    if (!emailOrUsername || !password) {
+      return res.status(400).json({ message: "Email/username and password are required." });
+    }
+    try {
+      const result = await pool.query(
+        `SELECT user_id, username, handle, email, skill_level, avatar_base64, password_hash, phone
+         FROM users WHERE LOWER(email) = LOWER($1) OR LOWER(username) = LOWER($1) OR LOWER(handle) = LOWER($1) LIMIT 1`,
+        [emailOrUsername.trim()]
+      );
+      if (result.rows.length === 0) {
+        return res.status(401).json({ message: "No account found with that email or username." });
+      }
+      const user = result.rows[0];
+      if (!user.password_hash) {
+        return res.status(403).json({ message: "This account has no password set. Use 'Forgot Password' to set one.", code: "no_password" });
+      }
+      const valid = await bcrypt.compare(password, user.password_hash);
+      if (!valid) {
+        return res.status(401).json({ message: "Incorrect password." });
+      }
+      await pool.query(`UPDATE users SET last_seen_at = NOW() WHERE user_id = $1`, [user.user_id]);
+      res.json({
+        userId: user.user_id,
+        username: user.username,
+        handle: user.handle,
+        email: user.email,
+        skillLevel: user.skill_level,
+        avatarBase64: user.avatar_base64 ?? null,
+        phone: user.phone ?? null
+      });
+    } catch (err) {
+      console.error("Login error:", err);
+      res.status(500).json({ message: "Server error. Please try again." });
+    }
+  });
+  app2.post("/api/auth/forgot-password", async (req, res) => {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ message: "Email is required." });
+    try {
+      const result = await pool.query(
+        `SELECT user_id, email FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`,
+        [email.trim()]
+      );
+      if (result.rows.length === 0) {
+        return res.json({ ok: true });
+      }
+      const user = result.rows[0];
+      const code = Math.floor(1e5 + Math.random() * 9e5).toString();
+      const expiresAt = new Date(Date.now() + 15 * 60 * 1e3);
+      await pool.query(
+        `UPDATE password_reset_codes SET used = TRUE WHERE user_id = $1 AND used = FALSE`,
+        [user.user_id]
+      );
+      await pool.query(
+        `INSERT INTO password_reset_codes (user_id, code, expires_at) VALUES ($1, $2, $3)`,
+        [user.user_id, code, expiresAt]
+      );
+      try {
+        await sendResetCodeEmail(user.email, code);
+      } catch (emailErr) {
+        console.error("Email send failed:", emailErr);
+      }
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("Forgot password error:", err);
+      res.status(500).json({ message: "Server error." });
+    }
+  });
+  app2.post("/api/auth/reset-password", async (req, res) => {
+    const { email, code, newPassword } = req.body;
+    if (!email || !code || !newPassword) {
+      return res.status(400).json({ message: "Email, code, and new password are required." });
+    }
+    if (newPassword.length < 6) {
+      return res.status(400).json({ message: "Password must be at least 6 characters." });
+    }
+    try {
+      const userResult = await pool.query(
+        `SELECT user_id FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`,
+        [email.trim()]
+      );
+      if (userResult.rows.length === 0) {
+        return res.status(400).json({ message: "No account found with that email." });
+      }
+      const userId = userResult.rows[0].user_id;
+      const codeResult = await pool.query(
+        `SELECT id FROM password_reset_codes
+         WHERE user_id = $1 AND code = $2 AND used = FALSE AND expires_at > NOW()
+         ORDER BY created_at DESC LIMIT 1`,
+        [userId, code.trim()]
+      );
+      if (codeResult.rows.length === 0) {
+        return res.status(400).json({ message: "Invalid or expired code. Please request a new one." });
+      }
+      const passwordHash = await bcrypt.hash(newPassword, 10);
+      await pool.query(`UPDATE users SET password_hash = $1, updated_at = NOW() WHERE user_id = $2`, [passwordHash, userId]);
+      await pool.query(`UPDATE password_reset_codes SET used = TRUE WHERE id = $1`, [codeResult.rows[0].id]);
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("Reset password error:", err);
+      res.status(500).json({ message: "Server error." });
+    }
+  });
+  app2.post("/api/auth/change-password", async (req, res) => {
+    const { userId, currentPassword, newPassword } = req.body;
+    if (!userId || !currentPassword || !newPassword) {
+      return res.status(400).json({ message: "All fields are required." });
+    }
+    if (newPassword.length < 6) {
+      return res.status(400).json({ message: "New password must be at least 6 characters." });
+    }
+    try {
+      const result = await pool.query(`SELECT password_hash FROM users WHERE user_id = $1 LIMIT 1`, [userId]);
+      if (result.rows.length === 0) return res.status(404).json({ message: "User not found." });
+      const user = result.rows[0];
+      if (!user.password_hash) return res.status(400).json({ message: "No password set." });
+      const valid = await bcrypt.compare(currentPassword, user.password_hash);
+      if (!valid) return res.status(401).json({ message: "Current password is incorrect." });
+      const passwordHash = await bcrypt.hash(newPassword, 10);
+      await pool.query(`UPDATE users SET password_hash = $1, updated_at = NOW() WHERE user_id = $2`, [passwordHash, userId]);
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("Change password error:", err);
+      res.status(500).json({ message: "Server error." });
+    }
+  });
   app2.post("/api/users", async (req, res) => {
     const { userId, username, handle, email, phone, skillLevel, deviceId, lat, lng } = req.body;
     const clientIp = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.socket.remoteAddress || "unknown";
@@ -1994,14 +2279,124 @@ async function registerRoutes(app2) {
   });
   app2.get("/api/users/demo", async (_req, res) => {
     try {
-      const result = await pool.query(
+      let demoRow = await pool.query(
         `SELECT user_id, username, handle, email, phone, skill_level, avatar_base64
-         FROM users WHERE user_id = 'hq_demo_account' LIMIT 1`
+         FROM users WHERE email = 'demo@hoopqueue.app' OR handle = 'hqdemo' OR user_id = 'hq_demo_account' LIMIT 1`
       );
-      if (result.rows.length === 0) return res.status(404).json({ message: "Demo account not found" });
-      const u = result.rows[0];
+      let demoId;
+      if (demoRow.rows.length === 0) {
+        demoId = "hq_demo_account";
+        await pool.query(
+          `INSERT INTO users (user_id, username, handle, email, skill_level, lat, lng)
+           VALUES ($1, 'HoopQueue Demo', 'hqdemo', 'demo@hoopqueue.app', 'Advanced', 34.0195, -118.4912)
+           ON CONFLICT DO NOTHING`,
+          [demoId]
+        );
+      } else {
+        demoId = demoRow.rows[0].user_id;
+      }
+      const supportConfig = [
+        { id: "hq_support_001", username: "Marcus B", handle: "marcusb_hq", email: "hq_s1@hoopqueue.app", skill: "Advanced" },
+        { id: "hq_support_002", username: "Jordan K", handle: "jordank_hq", email: "hq_s2@hoopqueue.app", skill: "Intermediate" },
+        { id: "hq_support_003", username: "DeShawn R", handle: "deshawnr_hq", email: "hq_s3@hoopqueue.app", skill: "Intermediate" },
+        { id: "hq_support_004", username: "Aaliyah T", handle: "aaliyaht_hq", email: "hq_s4@hoopqueue.app", skill: "Beginner" },
+        { id: "hq_support_005", username: "Chris V", handle: "chrisv_hq", email: "hq_s5@hoopqueue.app", skill: "Advanced" }
+      ];
+      const supporters = [];
+      for (const u2 of supportConfig) {
+        let existing = await pool.query(`SELECT user_id FROM users WHERE user_id = $1 OR email = $2 LIMIT 1`, [u2.id, u2.email]);
+        if (existing.rows.length === 0) {
+          await pool.query(
+            `INSERT INTO users (user_id, username, handle, email, skill_level, lat, lng)
+             VALUES ($1, $2, $3, $4, $5, 34.0195, -118.4912) ON CONFLICT DO NOTHING`,
+            [u2.id, u2.username, u2.handle, u2.email, u2.skill]
+          ).catch(
+            () => pool.query(
+              `INSERT INTO users (user_id, username, email, skill_level, lat, lng)
+               VALUES ($1, $2, $3, $4, 34.0195, -118.4912) ON CONFLICT DO NOTHING`,
+              [u2.id, u2.username, u2.email, u2.skill]
+            ).catch(() => {
+            })
+          );
+          supporters.push(u2.id);
+        } else {
+          supporters.push(existing.rows[0].user_id);
+        }
+      }
+      for (const sid of supporters) {
+        await pool.query(`INSERT INTO follows (follower_id, following_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [sid, demoId]);
+        await pool.query(`INSERT INTO follows (follower_id, following_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [demoId, sid]);
+      }
+      const postCheck = await pool.query(`SELECT COUNT(*) FROM posts WHERE user_id = $1`, [demoId]);
+      if (parseInt(postCheck.rows[0].count) === 0) {
+        const demoPosts = [
+          { id: "hq_post_01", caption: "Morning runs at Venice Beach \u{1F3C0}\u{1F305} court is busiest before 9am", court: "Venice Beach Courts", courtId: "hq_court_venice" },
+          { id: "hq_post_02", caption: "Called game \u{1F525} went 8-0 at Mar Vista today. Squad is locked in", court: null, courtId: null },
+          { id: "hq_post_03", caption: "Outdoor hoops hit different when the weather is perfect \u{1F624}", court: "Ballona Creek Courts", courtId: "hq_court_ballona" },
+          { id: "hq_post_04", caption: "Waitlist was 6 deep but we still got 3 runs in \u{1F4AA} patience pays", court: null, courtId: null },
+          { id: "hq_post_05", caption: "Post-game stretches and good vibes only \u{1F9D8} recovery is real", court: "Playa Vista Rec", courtId: "hq_court_playa" },
+          { id: "hq_post_06", caption: "New kicks on the court. Squad said I should've saved the money \u{1F602}", court: null, courtId: null },
+          { id: "hq_post_07", caption: "Hit 12/15 from three in warmups then bricked everything in the game \u{1F926}", court: "Culver City Park Courts", courtId: "hq_court_culver" },
+          { id: "hq_post_08", caption: "Sunday league. Refs are still terrible but the vibes are immaculate \u{1F3C6}", court: null, courtId: null }
+        ];
+        for (let i = 0; i < demoPosts.length; i++) {
+          const p = demoPosts[i];
+          const imgUrl = `https://picsum.photos/seed/hq_court${i + 1}/600/600`;
+          await pool.query(
+            `INSERT INTO posts (id, user_id, username, image_url, image_base64, caption, court_id, court_name, created_at)
+             VALUES ($1, $2, 'HoopQueue Demo', $3, '', $4, $5, $6, NOW() - (random() * interval '7 days'))
+             ON CONFLICT (id) DO NOTHING`,
+            [p.id, demoId, imgUrl, p.caption, p.courtId, p.court]
+          );
+          for (const sid of supporters.slice(0, 3)) {
+            await pool.query(`INSERT INTO post_likes (post_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [p.id, sid]);
+          }
+        }
+        const supportPosts = [
+          { id: "hq_spost_01", uidx: 0, username: "Marcus B", caption: "Back to back wins today. Feeling unbeatable \u{1F525}" },
+          { id: "hq_spost_02", uidx: 1, username: "Jordan K", caption: "Early morning court time before work hits different \u{1F304}" },
+          { id: "hq_spost_03", uidx: 2, username: "DeShawn R", caption: "Anyone tryna run this weekend? Venice is always popping \u{1F3C0}" }
+        ];
+        for (let i = 0; i < supportPosts.length; i++) {
+          const p = supportPosts[i];
+          const imgUrl = `https://picsum.photos/seed/hq_sp${i + 1}/600/600`;
+          await pool.query(
+            `INSERT INTO posts (id, user_id, username, image_url, image_base64, caption, created_at)
+             VALUES ($1, $2, $3, $4, '', $5, NOW() - (random() * interval '3 days'))
+             ON CONFLICT (id) DO NOTHING`,
+            [p.id, supporters[p.uidx], p.username, imgUrl, p.caption]
+          );
+          await pool.query(`INSERT INTO post_likes (post_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [p.id, demoId]);
+        }
+      }
+      const dmCheck = await pool.query(
+        `SELECT COUNT(*) FROM direct_messages WHERE sender_id = $1 OR receiver_id = $1`,
+        [demoId]
+      );
+      if (parseInt(dmCheck.rows[0].count) === 0) {
+        const demoMessages = [
+          { sender: supporters[0], receiver: demoId, text: "Yo nice game yesterday at Venice! You were hooping \u{1F525}" },
+          { sender: demoId, receiver: supporters[0], text: "Thanks bro! You were raining threes \u{1F624}" },
+          { sender: supporters[0], receiver: demoId, text: "You coming to Ballona Creek courts Saturday?" },
+          { sender: supporters[1], receiver: demoId, text: "Hey! Saw you on the waitlist at Playa Vista. Wanna run 3v3?" },
+          { sender: demoId, receiver: supporters[1], text: "For sure! I'll be there around 2pm" },
+          { sender: supporters[1], receiver: demoId, text: "Perfect, I'll grab 2 more guys. See you there \u{1F3C0}" },
+          { sender: supporters[2], receiver: demoId, text: "How long is the wait at Mar Vista right now?" },
+          { sender: demoId, receiver: supporters[2], text: "About 20 mins. 2 games ahead of us" }
+        ];
+        for (const dm of demoMessages) {
+          await pool.query(`INSERT INTO direct_messages (sender_id, receiver_id, text) VALUES ($1, $2, $3)`, [dm.sender, dm.receiver, dm.text]);
+        }
+      }
+      demoRow = await pool.query(
+        `SELECT user_id, username, handle, email, phone, skill_level, avatar_base64
+         FROM users WHERE user_id = $1 LIMIT 1`,
+        [demoId]
+      );
+      const u = demoRow.rows[0];
       res.json({ userId: u.user_id, username: u.username, handle: u.handle, email: u.email, phone: u.phone, skillLevel: u.skill_level, avatarBase64: u.avatar_base64 });
     } catch (err) {
+      console.error("Demo endpoint error:", err);
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -2120,6 +2515,35 @@ async function registerRoutes(app2) {
       });
     } catch (err) {
       console.error("Follow stats error:", err);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+  app2.post("/api/users/:userId/block", async (req, res) => {
+    const { userId } = req.params;
+    const { blockerId } = req.body;
+    if (!blockerId) return res.status(400).json({ message: "blockerId required" });
+    try {
+      await pool.query(
+        `INSERT INTO blocked_users (blocker_id, blocked_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+        [blockerId, userId]
+      );
+      await pool.query(`DELETE FROM follows WHERE (follower_id = $1 AND following_id = $2) OR (follower_id = $2 AND following_id = $1)`, [blockerId, userId]);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+  app2.post("/api/posts/:postId/report", async (req, res) => {
+    const { postId } = req.params;
+    const { reporterId, reason } = req.body;
+    if (!reporterId) return res.status(400).json({ message: "reporterId required" });
+    try {
+      await pool.query(
+        `INSERT INTO reported_posts (reporter_id, post_id, reason) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+        [reporterId, postId, reason ?? "objectionable content"]
+      );
+      res.json({ ok: true });
+    } catch (err) {
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -2712,11 +3136,16 @@ async function registerRoutes(app2) {
          FROM posts p
          LEFT JOIN post_likes pl ON pl.post_id = p.id
          LEFT JOIN post_comments pc ON pc.post_id = p.id
-         WHERE p.user_id = $1
-           OR p.user_id IN (
-             SELECT following_id FROM follows WHERE follower_id = $1
+         WHERE p.user_id NOT IN (
+             SELECT blocked_id FROM blocked_users WHERE blocker_id = $1
            )
-           ${nearbySubquery}
+           AND (
+             p.user_id = $1
+             OR p.user_id IN (
+               SELECT following_id FROM follows WHERE follower_id = $1
+             )
+             ${nearbySubquery}
+           )
          GROUP BY p.id
          ORDER BY p.created_at DESC
          LIMIT 100`,
@@ -3020,6 +3449,17 @@ function configureExpoAndLanding(app2) {
     const termsPath = path2.resolve(process.cwd(), "server", "templates", "terms.html");
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.status(200).send(fs2.readFileSync(termsPath, "utf-8"));
+  });
+  app2.get("/app-review-guide", (_req, res) => {
+    const guidePath = path2.resolve(process.cwd(), "server", "templates", "app-review-guide.html");
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.status(200).send(fs2.readFileSync(guidePath, "utf-8"));
+  });
+  app2.get("/hoopqueue-logo.pdf", (_req, res) => {
+    const pdfPath = path2.resolve(process.cwd(), "server", "templates", "HoopQueue_logo.pdf");
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", "attachment; filename=HoopQueue_logo.pdf");
+    res.status(200).send(fs2.readFileSync(pdfPath));
   });
   app2.use("/assets", express.static(path2.resolve(process.cwd(), "assets")));
   app2.use(express.static(path2.resolve(process.cwd(), "static-build")));
