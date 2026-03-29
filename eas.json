@@ -15,7 +15,7 @@
     "production": {
       "autoIncrement": false,
       "env": {
-        "EXPO_PUBLIC_DOMAIN": "225bc189-fd8a-474b-b606-8a7e85e3af6a-00-24lwnbse4oxnt.replit.app"
+        "EXPO_PUBLIC_DOMAIN": "225bc189-fd8a-474b-b606-8a7e85e3af6a-00-24lwnbse4oxnt.kirk.replit.dev"
       }
     }
   },
