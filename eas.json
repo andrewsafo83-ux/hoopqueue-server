@@ -13,7 +13,10 @@
       "distribution": "internal"
     },
     "production": {
-      "autoIncrement": false
+      "autoIncrement": false,
+      "env": {
+        "EXPO_PUBLIC_DOMAIN": "hoopqueue.app"
+      }
     }
   },
   "submit": {

@@ -16,7 +16,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "app.replit.hoopqueue",
-      "buildNumber": "18",
+      "buildNumber": "19",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "HoopQueue uses your location to show nearby basketball courts.",
         "NSLocationAlwaysUsageDescription": "HoopQueue uses your location to show nearby basketball courts.",
