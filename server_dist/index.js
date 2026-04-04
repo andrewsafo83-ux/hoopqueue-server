@@ -1,13 +1,37 @@
+"use strict";
+var __create = Object.create;
+var __defProp = Object.defineProperty;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __copyProps = (to, from, except, desc) => {
+  if (from && typeof from === "object" || typeof from === "function") {
+    for (let key of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key) && key !== except)
+        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+  }
+  return to;
+};
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+  // If the importer is in node compatibility mode or this is not an ESM
+  // file that has been converted to a CommonJS file using a Babel-
+  // compatible transform (i.e. "__esModule" has not been set), then set
+  // "default" to the CommonJS "module.exports" for node compatibility.
+  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+  mod
+));
+
 // server/index.ts
-import express from "express";
+var import_express = __toESM(require("express"));
 
 // server/routes.ts
-import { createServer } from "node:http";
-import { Pool } from "pg";
-import * as fs from "fs";
-import * as path from "path";
-import * as bcrypt from "bcryptjs";
-import * as nodemailer from "nodemailer";
+var import_node_http = require("node:http");
+var import_pg = require("pg");
+var fs = __toESM(require("fs"));
+var path = __toESM(require("path"));
+var bcrypt = __toESM(require("bcryptjs"));
+var nodemailer = __toESM(require("nodemailer"));
 
 // server/ca-courts.ts
 var CA_COURTS = [
@@ -1491,7 +1515,7 @@ This code expires in 15 minutes.`,
     </div>`
   });
 }
-var pool = new Pool({ connectionString: process.env.SUPABASE_DB_URL });
+var pool = new import_pg.Pool({ connectionString: process.env.SUPABASE_DB_URL });
 var SUPABASE_URL = process.env.SUPABASE_URL ?? "";
 var SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 async function uploadImageToStorage(base64, filename) {
@@ -1670,7 +1694,8 @@ async function registerRoutes(app2) {
       console.error("Auto-seed error:", err);
     }
   })();
-  await pool.query(`
+  try {
+    await pool.query(`
     CREATE TABLE IF NOT EXISTS posts (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
@@ -1683,14 +1708,14 @@ async function registerRoutes(app2) {
       created_at TIMESTAMP DEFAULT NOW()
     )
   `);
-  await pool.query(`
+    await pool.query(`
     CREATE TABLE IF NOT EXISTS post_likes (
       post_id TEXT NOT NULL,
       user_id TEXT NOT NULL,
       PRIMARY KEY (post_id, user_id)
     )
   `);
-  await pool.query(`
+    await pool.query(`
     CREATE TABLE IF NOT EXISTS post_comments (
       id TEXT PRIMARY KEY,
       post_id TEXT NOT NULL,
@@ -1701,7 +1726,7 @@ async function registerRoutes(app2) {
       created_at TIMESTAMP DEFAULT NOW()
     )
   `);
-  await pool.query(`
+    await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
       id SERIAL PRIMARY KEY,
       user_id TEXT UNIQUE NOT NULL,
@@ -1719,19 +1744,19 @@ async function registerRoutes(app2) {
       updated_at TIMESTAMP DEFAULT NOW()
     )
   `);
-  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_base64 TEXT`);
-  await pool.query(`ALTER TABLE posts ALTER COLUMN image_base64 DROP NOT NULL`).catch(() => {
-  });
-  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS push_token TEXT`);
-  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS device_id TEXT`);
-  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_ip TEXT`);
-  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMP DEFAULT NOW()`);
-  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT`);
-  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS handle TEXT`);
-  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS lat DOUBLE PRECISION`);
-  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS lng DOUBLE PRECISION`);
-  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT`);
-  await pool.query(`
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_base64 TEXT`);
+    await pool.query(`ALTER TABLE posts ALTER COLUMN image_base64 DROP NOT NULL`).catch(() => {
+    });
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS push_token TEXT`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS device_id TEXT`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_ip TEXT`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMP DEFAULT NOW()`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS handle TEXT`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS lat DOUBLE PRECISION`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS lng DOUBLE PRECISION`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT`);
+    await pool.query(`
     CREATE TABLE IF NOT EXISTS password_reset_codes (
       id SERIAL PRIMARY KEY,
       user_id TEXT NOT NULL,
@@ -1741,12 +1766,12 @@ async function registerRoutes(app2) {
       created_at TIMESTAMP DEFAULT NOW()
     )
   `);
-  try {
-    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS users_username_lower_idx ON users (LOWER(username))`);
-  } catch (e) {
-    console.warn("Could not create unique username index (may have existing duplicates):", e?.message);
-  }
-  await pool.query(`
+    try {
+      await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS users_username_lower_idx ON users (LOWER(username))`);
+    } catch (e) {
+      console.warn("Could not create unique username index (may have existing duplicates):", e?.message);
+    }
+    await pool.query(`
     CREATE TABLE IF NOT EXISTS waitlists (
       id SERIAL PRIMARY KEY,
       court_id TEXT NOT NULL,
@@ -1758,7 +1783,7 @@ async function registerRoutes(app2) {
       UNIQUE(court_id, user_id)
     )
   `);
-  await pool.query(`
+    await pool.query(`
     CREATE TABLE IF NOT EXISTS blocked_users (
       id SERIAL PRIMARY KEY,
       blocker_id TEXT NOT NULL,
@@ -1767,7 +1792,7 @@ async function registerRoutes(app2) {
       UNIQUE(blocker_id, blocked_id)
     )
   `);
-  await pool.query(`
+    await pool.query(`
     CREATE TABLE IF NOT EXISTS reported_posts (
       id SERIAL PRIMARY KEY,
       reporter_id TEXT NOT NULL,
@@ -1777,52 +1802,52 @@ async function registerRoutes(app2) {
       UNIQUE(reporter_id, post_id)
     )
   `);
-  try {
-    const dmCheck = await pool.query(
-      `SELECT COUNT(*) FROM direct_messages WHERE sender_id = 'hq_demo_account' OR receiver_id = 'hq_demo_account'`
-    );
-    if (parseInt(dmCheck.rows[0].count) === 0) {
-      const demoMessages = [
-        { sender: "hq_support_001", receiver: "hq_demo_account", text: "Yo nice game yesterday at Venice! You were hooping \u{1F525}" },
-        { sender: "hq_demo_account", receiver: "hq_support_001", text: "Thanks bro! You were raining threes \u{1F624}" },
-        { sender: "hq_support_001", receiver: "hq_demo_account", text: "You coming to Ballona Creek courts Saturday?" },
-        { sender: "hq_support_002", receiver: "hq_demo_account", text: "Hey! Saw you on the waitlist at Playa Vista. Wanna run 3v3?" },
-        { sender: "hq_demo_account", receiver: "hq_support_002", text: "For sure! I'll be there around 2pm" },
-        { sender: "hq_support_002", receiver: "hq_demo_account", text: "Perfect, I'll grab 2 more guys. See you there \u{1F3C0}" },
-        { sender: "hq_support_003", receiver: "hq_demo_account", text: "How long is the wait at Mar Vista right now?" },
-        { sender: "hq_demo_account", receiver: "hq_support_003", text: "About 20 mins. 2 games ahead of us" }
-      ];
-      for (const dm of demoMessages) {
-        await pool.query(
-          `INSERT INTO direct_messages (sender_id, receiver_id, text) VALUES ($1, $2, $3)`,
-          [dm.sender, dm.receiver, dm.text]
-        );
+    try {
+      const dmCheck = await pool.query(
+        `SELECT COUNT(*) FROM direct_messages WHERE sender_id = 'hq_demo_account' OR receiver_id = 'hq_demo_account'`
+      );
+      if (parseInt(dmCheck.rows[0].count) === 0) {
+        const demoMessages = [
+          { sender: "hq_support_001", receiver: "hq_demo_account", text: "Yo nice game yesterday at Venice! You were hooping \u{1F525}" },
+          { sender: "hq_demo_account", receiver: "hq_support_001", text: "Thanks bro! You were raining threes \u{1F624}" },
+          { sender: "hq_support_001", receiver: "hq_demo_account", text: "You coming to Ballona Creek courts Saturday?" },
+          { sender: "hq_support_002", receiver: "hq_demo_account", text: "Hey! Saw you on the waitlist at Playa Vista. Wanna run 3v3?" },
+          { sender: "hq_demo_account", receiver: "hq_support_002", text: "For sure! I'll be there around 2pm" },
+          { sender: "hq_support_002", receiver: "hq_demo_account", text: "Perfect, I'll grab 2 more guys. See you there \u{1F3C0}" },
+          { sender: "hq_support_003", receiver: "hq_demo_account", text: "How long is the wait at Mar Vista right now?" },
+          { sender: "hq_demo_account", receiver: "hq_support_003", text: "About 20 mins. 2 games ahead of us" }
+        ];
+        for (const dm of demoMessages) {
+          await pool.query(
+            `INSERT INTO direct_messages (sender_id, receiver_id, text) VALUES ($1, $2, $3)`,
+            [dm.sender, dm.receiver, dm.text]
+          );
+        }
       }
+    } catch (e) {
+      console.warn("Demo DM seed skipped:", e?.message);
     }
-  } catch (e) {
-    console.warn("Demo DM seed skipped:", e?.message);
-  }
-  try {
-    const demoHash = await bcrypt.hash("HoopQueue2024!", 10);
-    const demoRow = await pool.query(
-      `SELECT user_id, password_hash FROM users WHERE email = 'demo@hoopqueue.app' LIMIT 1`
-    );
-    if (demoRow.rows.length === 0) {
-      await pool.query(
-        `INSERT INTO users (user_id, username, handle, email, skill_level, password_hash, lat, lng, created_at, updated_at)
+    try {
+      const demoHash = await bcrypt.hash("HoopQueue2024!", 10);
+      const demoRow = await pool.query(
+        `SELECT user_id, password_hash FROM users WHERE email = 'demo@hoopqueue.app' LIMIT 1`
+      );
+      if (demoRow.rows.length === 0) {
+        await pool.query(
+          `INSERT INTO users (user_id, username, handle, email, skill_level, password_hash, lat, lng, created_at, updated_at)
          VALUES ('hq_apple_review', 'HoopQueue Demo', 'hqdemo', 'demo@hoopqueue.app', 'Advanced', $1, 34.0195, -118.4912, NOW(), NOW())
          ON CONFLICT DO NOTHING`,
-        [demoHash]
-      );
-      console.log("\u2713 Apple review demo account created");
-    } else if (!demoRow.rows[0].password_hash) {
-      await pool.query(`UPDATE users SET password_hash = $1 WHERE user_id = $2`, [demoHash, demoRow.rows[0].user_id]);
-      console.log("\u2713 Demo account password set");
+          [demoHash]
+        );
+        console.log("\u2713 Apple review demo account created");
+      } else if (!demoRow.rows[0].password_hash) {
+        await pool.query(`UPDATE users SET password_hash = $1 WHERE user_id = $2`, [demoHash, demoRow.rows[0].user_id]);
+        console.log("\u2713 Demo account password set");
+      }
+    } catch (e) {
+      console.warn("Demo password setup skipped:", e?.message);
     }
-  } catch (e) {
-    console.warn("Demo password setup skipped:", e?.message);
-  }
-  await pool.query(`
+    await pool.query(`
     CREATE TABLE IF NOT EXISTS follows (
       id SERIAL PRIMARY KEY,
       follower_id TEXT NOT NULL,
@@ -1831,7 +1856,7 @@ async function registerRoutes(app2) {
       UNIQUE(follower_id, following_id)
     )
   `);
-  await pool.query(`
+    await pool.query(`
     CREATE TABLE IF NOT EXISTS friendships (
       id SERIAL PRIMARY KEY,
       requester_id TEXT NOT NULL,
@@ -1842,7 +1867,7 @@ async function registerRoutes(app2) {
       UNIQUE(requester_id, addressee_id)
     )
   `);
-  await pool.query(`
+    await pool.query(`
     CREATE TABLE IF NOT EXISTS direct_messages (
       id SERIAL PRIMARY KEY,
       sender_id TEXT NOT NULL,
@@ -1851,7 +1876,7 @@ async function registerRoutes(app2) {
       created_at TIMESTAMP DEFAULT NOW()
     )
   `);
-  await pool.query(`
+    await pool.query(`
     CREATE TABLE IF NOT EXISTS dm_read_receipts (
       user_id TEXT NOT NULL,
       partner_id TEXT NOT NULL,
@@ -1859,7 +1884,7 @@ async function registerRoutes(app2) {
       PRIMARY KEY (user_id, partner_id)
     )
   `);
-  await pool.query(`
+    await pool.query(`
     CREATE TABLE IF NOT EXISTS analytics_events (
       id SERIAL PRIMARY KEY,
       event TEXT NOT NULL,
@@ -1869,9 +1894,12 @@ async function registerRoutes(app2) {
       created_at TIMESTAMP DEFAULT NOW()
     )
   `);
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_analytics_event ON analytics_events(event)`);
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_analytics_user ON analytics_events(user_id)`);
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_analytics_created ON analytics_events(created_at)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_analytics_event ON analytics_events(event)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_analytics_user ON analytics_events(user_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_analytics_created ON analytics_events(created_at)`);
+  } catch (dbInitErr) {
+    console.warn("DB initialization skipped (SUPABASE_DB_URL may not be set):", dbInitErr?.message ?? dbInitErr);
+  }
   app2.post("/api/analytics", async (req, res) => {
     const { event, userId, properties, platform } = req.body;
     if (!event) return res.status(400).json({ message: "event required" });
@@ -3287,14 +3315,14 @@ async function registerRoutes(app2) {
       res.status(500).json({ message: "Failed to delete comment" });
     }
   });
-  const httpServer = createServer(app2);
+  const httpServer = (0, import_node_http.createServer)(app2);
   return httpServer;
 }
 
 // server/index.ts
-import * as fs2 from "fs";
-import * as path2 from "path";
-var app = express();
+var fs2 = __toESM(require("fs"));
+var path2 = __toESM(require("path"));
+var app = (0, import_express.default)();
 var log = console.log;
 function setupCors(app2) {
   app2.use((req, res, next) => {
@@ -3326,14 +3354,14 @@ function setupCors(app2) {
 }
 function setupBodyParsing(app2) {
   app2.use(
-    express.json({
+    import_express.default.json({
       limit: "15mb",
       verify: (req, _res, buf) => {
         req.rawBody = buf;
       }
     })
   );
-  app2.use(express.urlencoded({ extended: false, limit: "15mb" }));
+  app2.use(import_express.default.urlencoded({ extended: false, limit: "15mb" }));
 }
 function setupRequestLogging(app2) {
   app2.use((req, res, next) => {
@@ -3461,8 +3489,8 @@ function configureExpoAndLanding(app2) {
     res.setHeader("Content-Disposition", "attachment; filename=HoopQueue_logo.pdf");
     res.status(200).send(fs2.readFileSync(pdfPath));
   });
-  app2.use("/assets", express.static(path2.resolve(process.cwd(), "assets")));
-  app2.use(express.static(path2.resolve(process.cwd(), "static-build")));
+  app2.use("/assets", import_express.default.static(path2.resolve(process.cwd(), "assets")));
+  app2.use(import_express.default.static(path2.resolve(process.cwd(), "static-build")));
   log("Expo routing: Checking expo-platform header on / and /manifest");
 }
 function setupErrorHandler(app2) {
