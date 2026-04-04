@@ -231,6 +231,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   })();
 
+  // ── Table initialization (wrapped so server survives missing DB on startup) ──
+  try {
+
   // ── Social feed tables ─────────────────────────────────────────────────────
   await pool.query(`
     CREATE TABLE IF NOT EXISTS posts (
@@ -458,6 +461,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_analytics_event ON analytics_events(event)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_analytics_user ON analytics_events(user_id)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_analytics_created ON analytics_events(created_at)`);
+
+  } catch (dbInitErr) {
+    console.warn("DB initialization skipped (SUPABASE_DB_URL may not be set):", (dbInitErr as any)?.message ?? dbInitErr);
+  }
 
   // POST /api/analytics — fire-and-forget event ingestion
   app.post("/api/analytics", async (req: Request, res: Response) => {
