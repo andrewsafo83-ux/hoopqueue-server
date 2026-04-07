@@ -3135,27 +3135,7 @@ async function registerRoutes(app2) {
   });
   app2.get("/api/feed/:userId", async (req, res) => {
     const { userId } = req.params;
-    const latRaw = req.query.lat ? parseFloat(req.query.lat) : null;
-    const lngRaw = req.query.lng ? parseFloat(req.query.lng) : null;
-    const lat = latRaw !== null && isFinite(latRaw) ? latRaw : null;
-    const lng = lngRaw !== null && isFinite(lngRaw) ? lngRaw : null;
-    const RADIUS_MILES = 100;
     try {
-      const hasLocation = lat !== null && lng !== null;
-      const nearbySubquery = hasLocation ? `OR p.user_id IN (
-             SELECT user_id FROM users u2
-             WHERE u2.lat IS NOT NULL AND u2.lng IS NOT NULL
-               AND (
-                 3959 * acos(
-                   LEAST(1.0,
-                     cos(radians($2)) * cos(radians(u2.lat)) *
-                     cos(radians(u2.lng) - radians($3)) +
-                     sin(radians($2)) * sin(radians(u2.lat))
-                   )
-                 )
-               ) <= $4
-           )` : "OR 1=1";
-      const queryParams = hasLocation ? [userId, lat, lng, RADIUS_MILES] : [userId];
       const result = await pool.query(
         `SELECT p.*,
           COUNT(DISTINCT pl.user_id)::int AS like_count,
@@ -3167,17 +3147,10 @@ async function registerRoutes(app2) {
          WHERE p.user_id NOT IN (
              SELECT blocked_id FROM blocked_users WHERE blocker_id = $1
            )
-           AND (
-             p.user_id = $1
-             OR p.user_id IN (
-               SELECT following_id FROM follows WHERE follower_id = $1
-             )
-             ${nearbySubquery}
-           )
          GROUP BY p.id
          ORDER BY p.created_at DESC
          LIMIT 100`,
-        queryParams
+        [userId]
       );
       res.json(
         result.rows.map((r) => ({
